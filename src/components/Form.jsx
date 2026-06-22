@@ -124,6 +124,19 @@ async function getOpenCv() {
   return cvModule;
 }
 
+let openCvLoadPromise = null;
+
+function loadOpenCvModule() {
+  if (!openCvLoadPromise) {
+    openCvLoadPromise = getOpenCv().catch((error) => {
+      openCvLoadPromise = null;
+      throw error;
+    });
+  }
+
+  return openCvLoadPromise;
+}
+
 function withTimeout(promise, milliseconds, errorMessage) {
   return Promise.race([
     promise,
@@ -374,6 +387,34 @@ const Form = ({ onSubmitCustomer }) => {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const preloadOpenCv = async () => {
+      setOpenCvStatus("Preloading OpenCV");
+
+      try {
+        const cv = await withTimeout(loadOpenCvModule(), 10000, "OpenCV preload timed out");
+
+        if (!cancelled) {
+          openCvRef.current = cv;
+          setOpenCvStatus("OpenCV ready");
+        }
+      } catch {
+        if (!cancelled) {
+          openCvRef.current = null;
+          setOpenCvStatus("Using fallback frame checks");
+        }
+      }
+    };
+
+    preloadOpenCv();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleChanges = (e) => {
     setValues({ ...values, [e.target.name]: e.target.value });
     setError("");
@@ -413,7 +454,7 @@ const Form = ({ onSubmitCustomer }) => {
 
     setOpenCvStatus("Loading OpenCV");
     try {
-      openCvRef.current = await withTimeout(getOpenCv(), 7000, "OpenCV loading timed out");
+      openCvRef.current = await withTimeout(loadOpenCvModule(), 7000, "OpenCV loading timed out");
       setOpenCvStatus("OpenCV ready");
       return openCvRef.current;
     } catch {
@@ -462,7 +503,11 @@ const Form = ({ onSubmitCustomer }) => {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
         audio: false,
       });
 
@@ -475,7 +520,7 @@ const Form = ({ onSubmitCustomer }) => {
       }
 
       setCameraStatus("Camera ready");
-      setOpenCvStatus("Loading OpenCV in background");
+      setOpenCvStatus(openCvRef.current ? "OpenCV ready" : "Loading OpenCV in background");
       setPoseStatus("Loading MediaPipe Pose in background");
       setPoseMessage("Camera is open. Vision checks are loading.");
 
