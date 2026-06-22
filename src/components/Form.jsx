@@ -106,37 +106,6 @@ function extractPoseMetrics(landmarks, frameMetrics) {
   };
 }
 
-async function getOpenCv() {
-  const { default: cvModule } = await import("@techstark/opencv-js");
-
-  if (cvModule instanceof Promise) {
-    return cvModule;
-  }
-
-  if (cvModule.Mat) {
-    return cvModule;
-  }
-
-  await new Promise((resolve) => {
-    cvModule.onRuntimeInitialized = resolve;
-  });
-
-  return cvModule;
-}
-
-let openCvLoadPromise = null;
-
-function loadOpenCvModule() {
-  if (!openCvLoadPromise) {
-    openCvLoadPromise = getOpenCv().catch((error) => {
-      openCvLoadPromise = null;
-      throw error;
-    });
-  }
-
-  return openCvLoadPromise;
-}
-
 function withTimeout(promise, milliseconds, errorMessage) {
   return Promise.race([
     promise,
@@ -155,7 +124,7 @@ function getCanvasImageData(video, width = 160, height = 120) {
   return context.getImageData(0, 0, width, height);
 }
 
-function preprocessFrameWithCanvas(video) {
+function preprocessFrame(video) {
   const imageData = getCanvasImageData(video, 120, 90);
   const data = imageData.data;
   let total = 0;
@@ -187,53 +156,6 @@ function preprocessFrameWithCanvas(video) {
     contrastOk: contrast > 18,
     sharpnessOk: sharpness > 5,
   };
-}
-
-function preprocessFrame(video, cv) {
-  if (!cv) {
-    return preprocessFrameWithCanvas(video);
-  }
-
-  const imageData = getCanvasImageData(video);
-  const source = cv.matFromImageData(imageData);
-  const gray = new cv.Mat();
-  const blurred = new cv.Mat();
-  const laplacian = new cv.Mat();
-  const edges = new cv.Mat();
-  const mean = new cv.Mat();
-  const stddev = new cv.Mat();
-
-  try {
-    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
-    cv.meanStdDev(gray, mean, stddev);
-    cv.Laplacian(blurred, laplacian, cv.CV_64F);
-    cv.Canny(blurred, edges, 50, 120);
-
-    const brightness = mean.doubleAt(0, 0);
-    const contrast = stddev.doubleAt(0, 0);
-    cv.meanStdDev(laplacian, mean, stddev);
-    const sharpness = stddev.doubleAt(0, 0);
-    const edgeDensity = cv.countNonZero(edges) / (edges.rows * edges.cols);
-
-    return {
-      brightness,
-      contrast,
-      sharpness,
-      edgeDensity,
-      lighting: brightness > 55 && brightness < 215,
-      contrastOk: contrast > 24,
-      sharpnessOk: stddev.doubleAt(0, 0) > 6 && edgeDensity > 0.015,
-    };
-  } finally {
-    source.delete();
-    gray.delete();
-    blurred.delete();
-    laplacian.delete();
-    edges.delete();
-    mean.delete();
-    stddev.delete();
-  }
 }
 
 function analyzePose(landmarks, frameMetrics) {
@@ -361,14 +283,12 @@ const Form = ({ onSubmitCustomer }) => {
   const [activeCapture, setActiveCapture] = useState("front");
   const [guidelines, setGuidelines] = useState(emptyGuidelines);
   const [cameraStatus, setCameraStatus] = useState("Camera is off");
-  const [openCvStatus, setOpenCvStatus] = useState("OpenCV not loaded");
   const [poseStatus, setPoseStatus] = useState("Pose model not loaded");
   const [poseMessage, setPoseMessage] = useState("Start the camera to begin automatic checks");
   const [error, setError] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const openCvRef = useRef(null);
   const poseLandmarkerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
@@ -384,34 +304,6 @@ const Form = ({ onSubmitCustomer }) => {
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
       poseLandmarkerRef.current?.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const preloadOpenCv = async () => {
-      setOpenCvStatus("Preloading OpenCV");
-
-      try {
-        const cv = await withTimeout(loadOpenCvModule(), 10000, "OpenCV preload timed out");
-
-        if (!cancelled) {
-          openCvRef.current = cv;
-          setOpenCvStatus("OpenCV ready");
-        }
-      } catch {
-        if (!cancelled) {
-          openCvRef.current = null;
-          setOpenCvStatus("Using fallback frame checks");
-        }
-      }
-    };
-
-    preloadOpenCv();
-
-    return () => {
-      cancelled = true;
     };
   }, []);
 
@@ -447,23 +339,6 @@ const Form = ({ onSubmitCustomer }) => {
     return poseLandmarkerRef.current;
   };
 
-  const loadOpenCv = async () => {
-    if (openCvRef.current) {
-      return openCvRef.current;
-    }
-
-    setOpenCvStatus("Loading OpenCV");
-    try {
-      openCvRef.current = await withTimeout(loadOpenCvModule(), 7000, "OpenCV loading timed out");
-      setOpenCvStatus("OpenCV ready");
-      return openCvRef.current;
-    } catch {
-      openCvRef.current = null;
-      setOpenCvStatus("Using fallback frame checks");
-      return null;
-    }
-  };
-
   const detectPose = async () => {
     const video = videoRef.current;
     const poseLandmarker = poseLandmarkerRef.current;
@@ -477,7 +352,7 @@ const Form = ({ onSubmitCustomer }) => {
       lastVideoTimeRef.current = video.currentTime;
       const result = poseLandmarker?.detectForVideo(video, video.currentTime * 1000);
       const landmarks = result?.landmarks?.[0];
-      const frameMetrics = preprocessFrame(video, openCvRef.current);
+      const frameMetrics = preprocessFrame(video);
       const analysis = analyzePose(landmarks, frameMetrics);
 
       latestPoseMetricsRef.current = extractPoseMetrics(landmarks, frameMetrics);
@@ -520,7 +395,6 @@ const Form = ({ onSubmitCustomer }) => {
       }
 
       setCameraStatus("Camera ready");
-      setOpenCvStatus(openCvRef.current ? "OpenCV ready" : "Loading OpenCV in background");
       setPoseStatus("Loading MediaPipe Pose in background");
       setPoseMessage("Camera is open. Vision checks are loading.");
 
@@ -530,17 +404,12 @@ const Form = ({ onSubmitCustomer }) => {
 
       animationFrameRef.current = requestAnimationFrame(detectPose);
 
-      const [openCvResult, poseResult] = await Promise.allSettled([
-        loadOpenCv(),
+      const poseResult = await Promise.allSettled([
         withTimeout(loadPoseLandmarker(), 12000, "MediaPipe loading timed out"),
       ]);
 
-      if (openCvResult.status === "fulfilled") {
-        openCvRef.current = openCvResult.value;
-      }
-
-      if (poseResult.status === "fulfilled") {
-        poseLandmarkerRef.current = poseResult.value;
+      if (poseResult[0].status === "fulfilled") {
+        poseLandmarkerRef.current = poseResult[0].value;
         setPoseMessage("Move into the guide so the pose model can validate the frame");
       } else {
         setPoseStatus("Pose model could not load");
@@ -613,7 +482,7 @@ const Form = ({ onSubmitCustomer }) => {
         side: photos.side?.poseMetrics,
       },
       captureMethod: "MediaPipe guided camera",
-      pipeline: ["Camera", "OpenCV preprocessing", "MediaPipe Pose", "Measurement formulas", "AI adjustment"],
+      pipeline: ["Camera", "Canvas frame checks", "MediaPipe Pose", "Measurement formulas", "AI adjustment"],
     });
   };
 
@@ -769,7 +638,6 @@ const Form = ({ onSubmitCustomer }) => {
               <div className="rounded-lg border border-stone-200 bg-white p-3">
                 <p className="text-sm font-semibold text-stone-950">Automatic checks</p>
                 <p className="mt-1 text-sm text-stone-500">{poseMessage}</p>
-                <p className="mt-1 text-xs font-medium text-emerald-700">{openCvStatus}</p>
                 <p className="mt-1 text-xs font-medium text-amber-700">{poseStatus}</p>
                 <div className="mt-3 grid gap-2">
                   {Object.entries(guidelineLabels).map(([key, label]) => (

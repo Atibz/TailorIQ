@@ -318,7 +318,7 @@ function MeasurementResults({ customer, onStartNew }) {
       <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm font-semibold text-stone-950">Processing flow</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {(customer.pipeline || ["Camera", "OpenCV preprocessing", "MediaPipe Pose", "Measurement formulas", "AI adjustment"]).map((step, index) => (
+          {(customer.pipeline || ["Camera", "Canvas frame checks", "MediaPipe Pose", "Measurement formulas", "AI adjustment"]).map((step, index) => (
             <div key={step} className="min-w-0 rounded-md bg-white p-3">
               <p className="text-xs font-semibold text-amber-700">Step {index + 1}</p>
               <p className="mt-1 break-words text-sm font-medium text-stone-900">{step}</p>
