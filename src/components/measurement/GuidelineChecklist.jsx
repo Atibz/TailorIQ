@@ -15,7 +15,7 @@ function GuidelineChecklist({ guidelineLabels, guidelines, poseMessage, poseStat
         </span>
       </div>
       <p className="mt-1 text-xs font-medium text-amber-700">{poseStatus}</p>
-      <div className="mt-3 grid gap-1.5 text-xs sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      <div className="mt-3 grid grid-cols-2 gap-1.5 text-xs">
         {entries.map(([key, label]) => (
           <div key={key} className="flex min-h-6 items-center gap-2 text-stone-700">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${guidelines[key] ? "bg-emerald-500" : "bg-stone-300"}`} />

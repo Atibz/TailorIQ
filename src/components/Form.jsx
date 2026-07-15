@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMeasurementCapture } from "../hooks/useMeasurementCapture";
+import CaptureStandingGuide from "./measurement/CaptureStandingGuide";
 import CustomerDetailsFields from "./measurement/CustomerDetailsFields";
 import GuidedCapturePanel from "./measurement/GuidedCapturePanel";
 import ReferenceCalibrationPanel from "./measurement/ReferenceCalibrationPanel";
@@ -7,6 +8,7 @@ import { buildReferenceCalibration } from "./measurement/referenceCalibration";
 
 const initialValues = {
   fullname: "",
+  phone: "",
   height: "",
   heightUnit: "cm",
   scaleMode: "height",
@@ -51,6 +53,49 @@ function WorkflowProgress({ steps }) {
   );
 }
 
+const stepContent = {
+  info: {
+    eyebrow: "Step 1",
+    title: "Basic information",
+    description: "Add the name, optional phone number, and measurement profile.",
+  },
+  scale: {
+    eyebrow: "Step 2",
+    title: "Scale anchor",
+    description: "Use a known height or choose a reference object for scaling.",
+  },
+  photos: {
+    eyebrow: "Step 4",
+    title: "Front and side photos",
+    description: "Add the photos using the method you chose.",
+  },
+  clientSetup: {
+    eyebrow: "Step 4",
+    title: "Set up your phone",
+    description: "Place your phone where it can see your whole body before starting the guided capture.",
+  },
+  photoReview: {
+    eyebrow: "Step 5",
+    title: "Check your photos",
+    description: "Review the front and side photos before analysis begins.",
+  },
+  captureMethod: {
+    eyebrow: "Step 3",
+    title: "Photo setup",
+    description: "Prepare the client, then choose how to add the photos.",
+  },
+  reference: {
+    eyebrow: "Step 5",
+    title: "Reference mark",
+    description: "Mark the reference object in the front photo so scale can be calculated.",
+  },
+  review: {
+    eyebrow: "Final step",
+    title: "Ready to process",
+    description: "Check that each requirement is complete, then process the measurement.",
+  },
+};
+
 function CompletionStatus({ items }) {
   return (
     <div className="grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm sm:grid-cols-3">
@@ -64,13 +109,158 @@ function CompletionStatus({ items }) {
   );
 }
 
-function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCustomer, profileOptions = [] }) {
+function SelfCaptureSetup() {
+  const steps = [
+    "Place your phone upright on a table.",
+    "Support it with books or an open laptop so it does not fall.",
+    "Step back slowly until your whole body fits inside the guide.",
+    "Wear fitted clothes and stand straight with arms relaxed.",
+  ];
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-[linear-gradient(135deg,#FF9F00_0%,#F1F1F1_54%,#FFF3D6_100%)] p-5">
+        <div className="relative mx-auto flex min-h-72 max-w-md items-end justify-center">
+          <div className="absolute bottom-10 left-4 right-4 h-4 rounded-full bg-[#111111]/20" />
+          <div className="absolute bottom-12 left-8 h-7 w-24 rounded-md bg-[#A31621] shadow-md" />
+          <div className="absolute bottom-[4.75rem] left-14 h-7 w-28 rounded-md bg-[#111111] shadow-md" />
+          <div className="absolute bottom-[6.5rem] left-20 h-7 w-24 rounded-md bg-[#000004] shadow-md" />
+          <div className="absolute bottom-[7.7rem] left-[7.4rem] h-28 w-16 animate-[phone-tilt_3s_ease-in-out_infinite] rounded-xl border-[6px] border-[#000004] bg-[#F1F1F1] shadow-xl">
+            <span className="absolute left-1/2 top-2 h-1.5 w-6 -translate-x-1/2 rounded-full bg-[#000004]/50" />
+            <span className="absolute inset-x-2 bottom-3 top-5 rounded-md border border-[#111111]/30 bg-[#FF9F00]/40" />
+          </div>
+          <div className="absolute bottom-10 right-20 h-32 w-20 rounded-t-full bg-white/80 shadow-[0_0_0_2px_rgba(53,86,145,0.25)]" />
+          <div className="absolute bottom-4 right-[6.7rem] h-16 w-6 rounded-full bg-white/80" />
+          <div className="absolute bottom-4 right-[4.7rem] h-16 w-6 rounded-full bg-white/80" />
+          <div className="absolute bottom-24 right-10 h-px w-24 border-t border-dashed border-[#111111]" />
+          <div className="absolute bottom-28 right-8 rounded-full bg-[#111111] px-3 py-1 text-xs font-bold text-white">5-7 steps</div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">Self capture guide</p>
+          <p className="mt-1 text-sm leading-6 text-stone-600">
+            The camera will speak instructions and wait until your full body is inside the guide before the timer starts.
+          </p>
+        </div>
+        <div className="grid gap-3">
+          {steps.map((step, index) => (
+            <div key={step} className="flex gap-3 rounded-lg border border-stone-200 bg-white p-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111111] text-xs font-bold text-white">
+                {index + 1}
+              </span>
+              <p className="text-sm leading-6 text-stone-700">{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientPhotoReview({ photos, onRetake }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {Object.entries({ front: "Front photo", side: "Side photo" }).map(([view, label]) => (
+          <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+            <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+              <p className="text-sm font-semibold text-stone-950">{label}</p>
+              <button
+                type="button"
+                onClick={() => onRetake(view)}
+                className="rounded-md border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+              >
+                Retake
+              </button>
+            </div>
+            {photos[view]?.preview ? (
+              <img className="aspect-[3/4] w-full object-cover" src={photos[view].preview} alt={`${label} preview`} />
+            ) : (
+              <div className="flex min-h-64 items-center justify-center bg-stone-50 px-4 text-center text-sm text-stone-500">
+                No {label.toLowerCase()} yet.
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+        Continue only if your head, feet, and full body shape are visible in both photos.
+      </div>
+    </div>
+  );
+}
+
+function CaptureMethodChoice({ isClientMode, referenceObject, scaleMode, measurementProfile, onChoose }) {
+  if (isClientMode) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onChoose("self-camera")}
+          className="min-h-32 rounded-lg border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300 hover:bg-amber-100"
+        >
+          <span className="text-sm font-semibold text-stone-950">Take it myself</span>
+          <span className="mt-2 block text-sm leading-6 text-stone-600">
+            Set the phone down, follow audio guidance, and let the timer capture front and side photos.
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChoose("friend-camera")}
+          className="min-h-32 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+        >
+          <span className="text-sm font-semibold text-stone-950">Someone is helping</span>
+          <span className="mt-2 block text-sm leading-6 text-stone-600">
+            Use the guided camera like tailor mode, then review the photos before analysis.
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <CaptureStandingGuide
+        measurementProfile={measurementProfile}
+        referenceObject={referenceObject}
+        scaleMode={scaleMode}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onChoose("camera")}
+          className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+        >
+          <span className="text-sm font-semibold text-stone-950">Use camera</span>
+          <span className="mt-2 block text-sm text-stone-600">Open the camera and capture the front and side views now.</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChoose("upload")}
+          className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+        >
+          <span className="text-sm font-semibold text-stone-950">Upload photos</span>
+          <span className="mt-2 block text-sm text-stone-600">Choose existing front and side photos from the device.</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmitCustomer, profileOptions = [] }) {
   const [draftId] = useState(() => initialDraft?.id || `draft-${Date.now()}-${Math.round(Math.random() * 100000)}`);
   const [values, setValues] = useState(() => ({ ...initialValues, ...(initialDraft?.values || {}) }));
   const [error, setError] = useState("");
+  const [activeStep, setActiveStep] = useState("info");
   const [referenceMarker, setReferenceMarker] = useState(initialDraft?.referenceMarker || null);
-  const [captureInputMode, setCaptureInputMode] = useState("camera");
+  const [captureInputMode, setCaptureInputMode] = useState(initialDraft?.captureInputMode || "");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cameraFeedback, setCameraFeedback] = useState("");
+  const cameraAutoStartRequestedRef = useRef(false);
+  const startCameraRef = useRef(null);
   const capture = useMeasurementCapture({
     initialPhotos: initialDraft?.photos,
     referenceObject: values.referenceObject,
@@ -78,8 +268,10 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
     setValues,
     setError,
   });
+  const isCameraActive = capture.isCameraActive;
   const needsHeight = values.scaleMode === "height";
   const needsReference = values.scaleMode === "reference";
+  const isClientMode = appMode === "client";
   const needsReferenceSize = values.referenceObject === "measuring-tape";
   const hasCustomerInfo = Boolean(values.fullname.trim());
   const hasScaleAnchor = needsHeight
@@ -99,15 +291,28 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
     : null;
   const hasReferenceCalibration = !needsReference || Boolean(referenceCalibration);
   const canProcessMeasurement = hasCustomerInfo && hasScaleAnchor && hasPhotos && hasReferenceCalibration && !isProcessing;
-  const workflowSteps = [
-    { label: "Customer info", done: hasCustomerInfo },
-    { label: "Scale anchor", done: hasScaleAnchor },
-    { label: "Photos", done: hasPhotos },
-    ...(needsReference ? [{ label: "Reference mark", done: hasReferenceCalibration }] : []),
-    { label: isProcessing ? "Processing" : "Review", done: false },
-  ].map((step, index, steps) => ({
+  const stepOrder = useMemo(
+    () => [
+      { id: "info", label: isClientMode ? "Your info" : "Customer info", done: hasCustomerInfo },
+      { id: "scale", label: "Scale anchor", done: hasScaleAnchor },
+      { id: "captureMethod", label: "Photo setup", done: Boolean(captureInputMode) },
+      ...(isClientMode && captureInputMode === "self-camera"
+        ? [{ id: "clientSetup", label: "Phone setup", done: activeStep === "photos" || hasPhotos }]
+        : []),
+      { id: "photos", label: "Photos", done: hasPhotos },
+      ...(isClientMode ? [{ id: "photoReview", label: "Photo review", done: hasPhotos && activeStep === "review" }] : []),
+      ...(needsReference ? [{ id: "reference", label: "Reference mark", done: hasReferenceCalibration }] : []),
+      { id: "review", label: isProcessing ? "Processing" : "Review", done: false },
+    ],
+    [activeStep, captureInputMode, hasCustomerInfo, hasPhotos, hasReferenceCalibration, hasScaleAnchor, isClientMode, isProcessing, needsReference],
+  );
+  const currentStep = stepOrder.some((step) => step.id === activeStep) ? activeStep : "review";
+  const activeStepIndex = Math.max(stepOrder.findIndex((step) => step.id === currentStep), 0);
+  const activeStepContent = stepContent[currentStep] || stepContent.info;
+  const isFinalStep = currentStep === "review";
+  const workflowSteps = stepOrder.map((step) => ({
     ...step,
-    active: !step.done && steps.slice(0, index).every((previousStep) => previousStep.done),
+    active: step.id === currentStep,
   }));
   const completionItems = [
     { label: hasCustomerInfo ? "Customer ready" : "Customer name needed", done: hasCustomerInfo },
@@ -124,8 +329,8 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
     const hasPhotos = Boolean(capture.photos.front || capture.photos.side);
     const hasReferenceMarker = Boolean(referenceMarker);
 
-    return hasChanged || hasPhotos || hasReferenceMarker;
-  }, [capture.photos.front, capture.photos.side, referenceMarker, values]);
+    return hasChanged || hasPhotos || hasReferenceMarker || Boolean(captureInputMode);
+  }, [capture.photos.front, capture.photos.side, captureInputMode, referenceMarker, values]);
 
   const saveDraft = useCallback(() => {
     if (!hasDraftContent()) {
@@ -140,8 +345,9 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
       values,
       photos: capture.photos,
       referenceMarker,
+      captureInputMode,
     });
-  }, [capture.photos, draftId, hasDraftContent, initialDraft?.createdAt, onDraftChange, referenceMarker, values]);
+  }, [capture.photos, captureInputMode, draftId, hasDraftContent, initialDraft?.createdAt, onDraftChange, referenceMarker, values]);
 
   useEffect(() => {
     saveDraft();
@@ -218,9 +424,17 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
           front: capture.photos.front?.preview,
           side: capture.photos.side?.preview,
         },
-        captureMethod: "MediaPipe guided camera",
+        captureMethod: captureInputMode === "upload"
+          ? "Uploaded photos"
+          : captureInputMode === "self-camera"
+            ? "Self guided camera"
+            : "MediaPipe guided camera",
         pipeline: [
-          "Camera or upload",
+          captureInputMode === "upload"
+            ? "Uploaded photos"
+            : captureInputMode === "self-camera"
+              ? "Self guided camera"
+              : "Camera capture",
           "Guideline checks",
           "MediaPipe Pose",
           needsReference ? "Reference calibration" : "Scale anchor",
@@ -233,13 +447,139 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
     }
   };
 
-  const handleReset = () => {
-    setValues(initialValues);
-    capture.resetCapture();
-    setReferenceMarker(null);
-    setIsProcessing(false);
+  const getStepError = (stepId) => {
+    if (stepId === "info" && !values.fullname.trim()) {
+      return "Full name is required.";
+    }
+
+    if (stepId === "scale") {
+      if (needsHeight && !values.height) {
+        return isClientMode
+          ? "Enter your height, or switch to a reference object if you do not know it."
+          : "Enter the customer's height, or switch to a reference object if they do not know it.";
+      }
+
+      if (needsReference && !values.referenceObject) {
+        return "Choose the reference object that will appear clearly in the photos.";
+      }
+
+      if (needsReference && needsReferenceSize && !values.referenceSize) {
+        return "Enter the visible size of the measuring tape.";
+      }
+    }
+
+    if (stepId === "photos" && !hasPhotos) {
+      return "Capture or upload both front and side photos before continuing.";
+    }
+
+    if (stepId === "captureMethod" && !captureInputMode) {
+      return isClientMode ? "Choose whether you are taking the photos yourself or getting help." : "Choose whether to use the camera or upload photos.";
+    }
+
+    if (stepId === "photoReview" && !hasPhotos) {
+      return "Review both front and side photos before analysis begins.";
+    }
+
+    if (stepId === "reference" && needsReference && !referenceCalibration) {
+      return "Mark the reference object in the front photo so the app can calculate the scale.";
+    }
+
+    return "";
+  };
+
+  const handleNextStep = () => {
+    const stepError = getStepError(currentStep);
+
+    if (stepError) {
+      setError(stepError);
+      return;
+    }
+
     setError("");
-    onClearDraft?.();
+    setActiveStep(stepOrder[Math.min(activeStepIndex + 1, stepOrder.length - 1)].id);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  const handlePreviousStep = () => {
+    setError("");
+    setActiveStep(stepOrder[Math.max(activeStepIndex - 1, 0)].id);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  const handleChooseCaptureMethod = (mode) => {
+    setCaptureInputMode(mode);
+    setCameraFeedback("");
+    setError("");
+    setActiveStep(isClientMode && mode === "self-camera" ? "clientSetup" : "photos");
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  useEffect(() => {
+    startCameraRef.current = capture.startCamera;
+  }, [capture.startCamera]);
+
+  useEffect(() => {
+    if (currentStep !== "photos" || !["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
+      cameraAutoStartRequestedRef.current = false;
+      return undefined;
+    }
+
+    if (cameraAutoStartRequestedRef.current || isCameraActive) {
+      return undefined;
+    }
+
+    cameraAutoStartRequestedRef.current = true;
+    const startTimer = window.setTimeout(() => {
+      startCameraRef.current?.();
+    }, 120);
+
+    return () => window.clearTimeout(startTimer);
+  }, [captureInputMode, currentStep, isCameraActive]);
+
+  const movePastPhotoStep = () => {
+    const photoStepIndex = stepOrder.findIndex((step) => step.id === "photos");
+    const nextStep = stepOrder[Math.min(photoStepIndex + 1, stepOrder.length - 1)];
+
+    setActiveStep(nextStep.id);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  const handleCameraCapture = () => {
+    const capturedView = capture.activeCapture;
+    const shouldAdvanceAfterCapture =
+      capturedView === "side" &&
+      capture.allGuidelinesPassed &&
+      capture.videoRef.current?.readyState >= 2;
+    const shouldShowSuccess =
+      capture.allGuidelinesPassed &&
+      capture.videoRef.current?.readyState >= 2;
+
+    capture.capturePhoto();
+
+    if (shouldShowSuccess) {
+      setCameraFeedback(
+        capturedView === "front" && captureInputMode === "self-camera"
+          ? "Front saved. Turn to your side."
+          : `${capturedView === "front" ? "Front" : "Side"} view saved`,
+      );
+      window.setTimeout(() => setCameraFeedback(""), 900);
+    }
+
+    if (shouldAdvanceAfterCapture) {
+      setTimeout(() => {
+        setError("");
+        capture.stopCamera();
+        movePastPhotoStep();
+      }, 650);
+    }
+  };
+
+  const handleExitCamera = () => {
+    capture.stopCamera();
+    setCameraFeedback("");
+    setError("");
+    setActiveStep("captureMethod");
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
   const handleRetakePhoto = (view) => {
@@ -248,6 +588,9 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
     }
 
     capture.retakePhoto(view);
+    if (isClientMode) {
+      setActiveStep("photos");
+    }
   };
 
   const handleBack = () => {
@@ -256,7 +599,7 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
   };
 
   return (
-    <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+    <section>
       {error && (
         <div
           className="fixed bottom-4 left-4 right-4 z-50 rounded-lg border border-red-200 bg-red-50 p-4 pr-12 text-sm font-medium text-red-800 shadow-lg sm:left-auto sm:max-w-md"
@@ -280,19 +623,22 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
           <button
             type="button"
             onClick={handleBack}
-            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-700 transition hover:bg-stone-50"
+            aria-label={isClientMode ? "Back to home" : "Back to dashboard"}
+            title={isClientMode ? "Back to home" : "Back to dashboard"}
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.42-1.41L7.83 13H20v-2Z" />
             </svg>
-            Back to dashboard
           </button>
         )}
         <div>
-          <p className="text-sm font-medium text-amber-700">New measurement</p>
-          <h2 className="mt-2 text-2xl font-semibold text-stone-950">Customer information</h2>
+          <p className="text-sm font-medium text-amber-700">{activeStepContent.eyebrow}</p>
+          <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+            {activeStepContent.title}
+          </h2>
           <p className="mt-2 text-sm text-stone-500">
-            Use a known height when available. If not, choose a safe reference object and capture front and side photos.
+            {activeStepContent.description}
           </p>
         </div>
       </div>
@@ -306,31 +652,73 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
           </div>
         )}
 
-        <CustomerDetailsFields values={values} profileOptions={profileOptions} onChange={handleChanges} />
+        {currentStep === "info" && (
+          <div className="grid gap-5 md:grid-cols-2">
+            <CustomerDetailsFields
+              isClientMode={isClientMode}
+              section="info"
+              values={values}
+              profileOptions={profileOptions}
+              onChange={handleChanges}
+            />
+          </div>
+        )}
 
-        <GuidedCapturePanel
-          activeCapture={capture.activeCapture}
-          allGuidelinesPassed={capture.allGuidelinesPassed}
-          canvasRef={capture.canvasRef}
-          capturePhoto={capture.capturePhoto}
-          guidelineLabels={capture.guidelineLabels}
-          guidelines={capture.guidelines}
-          measurementProfile={values.measurementProfile}
-          onUploadPhoto={capture.handleUploadPhoto}
-          photos={capture.photos}
-          poseMessage={capture.poseMessage}
-          poseStatus={capture.poseStatus}
-          referenceObject={values.referenceObject}
-          retakePhoto={handleRetakePhoto}
-          scaleMode={values.scaleMode}
-          startCamera={capture.startCamera}
-          uploadStatus={capture.uploadStatus}
-          videoRef={capture.videoRef}
-          inputMode={captureInputMode}
-          onInputModeChange={setCaptureInputMode}
-        />
+        {currentStep === "scale" && (
+          <div className="grid gap-5">
+            <CustomerDetailsFields
+              isClientMode={isClientMode}
+              section="scale"
+              values={values}
+              profileOptions={profileOptions}
+              onChange={handleChanges}
+            />
+          </div>
+        )}
 
-        {values.scaleMode === "reference" && (
+        {currentStep === "captureMethod" && (
+          <CaptureMethodChoice
+            isClientMode={isClientMode}
+            measurementProfile={values.measurementProfile}
+            referenceObject={values.referenceObject}
+            scaleMode={values.scaleMode}
+            onChoose={handleChooseCaptureMethod}
+          />
+        )}
+
+        {currentStep === "clientSetup" && (
+          <SelfCaptureSetup />
+        )}
+
+        {currentStep === "photos" && (
+          <GuidedCapturePanel
+            activeCapture={capture.activeCapture}
+            allGuidelinesPassed={capture.allGuidelinesPassed}
+            canvasRef={capture.canvasRef}
+            cameraFeedback={cameraFeedback}
+            capturePhoto={handleCameraCapture}
+            guidelineLabels={capture.guidelineLabels}
+            guidelines={capture.guidelines}
+            isCameraActive={capture.isCameraActive}
+            onExitCamera={handleExitCamera}
+            onUploadPhoto={capture.handleUploadPhoto}
+            photos={capture.photos}
+            poseMessage={capture.poseMessage}
+            poseStatus={capture.poseStatus}
+            retakePhoto={handleRetakePhoto}
+            startCamera={capture.startCamera}
+            uploadStatus={capture.uploadStatus}
+            videoRef={capture.videoRef}
+            inputMode={["camera", "self-camera", "friend-camera"].includes(captureInputMode) ? "camera" : captureInputMode}
+            captureMode={captureInputMode === "self-camera" ? "self" : "assisted"}
+          />
+        )}
+
+        {currentStep === "photoReview" && (
+          <ClientPhotoReview photos={capture.photos} onRetake={handleRetakePhoto} />
+        )}
+
+        {currentStep === "reference" && values.scaleMode === "reference" && (
           <ReferenceCalibrationPanel
             marker={referenceMarker}
             onChange={setReferenceMarker}
@@ -341,7 +729,8 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
           />
         )}
 
-        <div className="space-y-3 border-t border-stone-100 pt-5">
+        {currentStep === "review" && (
+          <div className="space-y-3">
           <CompletionStatus items={completionItems} />
           {isProcessing && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -349,22 +738,37 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
               <p className="mt-1">Uploading views, running segmentation, estimating measurements, and preparing review.</p>
             </div>
           )}
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          </div>
+        )}
+
+        <div className="border-t border-stone-100 pt-5">
+          <div className={`grid gap-3 ${currentStep === "captureMethod" ? "grid-cols-1" : "grid-cols-2"}`}>
             <button
               type="button"
-              onClick={handleReset}
-              disabled={isProcessing}
+              onClick={handlePreviousStep}
+              disabled={activeStepIndex === 0 || isProcessing}
               className="min-h-11 rounded-md border border-stone-300 px-4 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:text-stone-400"
             >
-              Clear
+              Previous
             </button>
-            <button
-              type="submit"
-              disabled={!canProcessMeasurement}
-              className="min-h-11 rounded-md bg-amber-600 px-5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-            >
-              {isProcessing ? "Processing..." : "Process measurement"}
-            </button>
+            {isFinalStep || (isClientMode && currentStep === "photoReview") ? (
+              <button
+                type="submit"
+                disabled={!canProcessMeasurement}
+                className="min-h-11 rounded-md bg-amber-600 px-5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+              >
+                {isProcessing ? "Processing..." : isClientMode && currentStep === "photoReview" ? "Analyze measurements" : "Process measurement"}
+              </button>
+            ) : currentStep === "captureMethod" ? null : (
+              <button
+                type="button"
+                onClick={handleNextStep}
+                disabled={isProcessing}
+                className="min-h-11 rounded-md bg-amber-600 px-5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+              >
+                Continue
+              </button>
+            )}
           </div>
         </div>
       </form>
@@ -373,3 +777,5 @@ function Form({ initialDraft, onBack, onClearDraft, onDraftChange, onSubmitCusto
 }
 
 export default Form;
+
+

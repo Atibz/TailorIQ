@@ -15,7 +15,7 @@ function getStatusClass(status) {
 
 function PhotoUploadPanel({ photos, uploadStatus, onRetake, onUploadPhoto }) {
   return (
-    <div className="rounded-lg border border-amber-200 bg-white p-4">
+    <div>
       <div>
         <div>
           <p className="text-sm font-semibold text-stone-950">Photo upload</p>

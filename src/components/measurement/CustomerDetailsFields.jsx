@@ -1,27 +1,65 @@
 import React from "react";
 import { fieldClass, labelClass, preventNumberInputWheel, referenceObjects } from "./constants";
 
-function CustomerDetailsFields({ values, profileOptions, onChange }) {
+function CustomerDetailsFields({ isClientMode = false, section = "all", values, profileOptions, onChange }) {
   const selectedReference = referenceObjects.find((object) => object.id === values.referenceObject);
   const needsReferenceSize = values.referenceObject === "measuring-tape";
 
-  return (
+  const infoFields = (
     <>
       <div>
         <label className={labelClass} htmlFor="fullname">
-          Full name*
+          {isClientMode ? "Your name*" : "Full name*"}
         </label>
         <input
           className={`${fieldClass} mt-2`}
           id="fullname"
           type="text"
-          placeholder="Enter customer name"
+          placeholder={isClientMode ? "Enter your name" : "Enter customer name"}
           name="fullname"
           value={values.fullname}
           onChange={onChange}
         />
       </div>
 
+      <div>
+        <label className={labelClass} htmlFor="phone">
+          Phone number (optional)
+        </label>
+        <input
+          className={`${fieldClass} mt-2`}
+          id="phone"
+          type="tel"
+          placeholder="080..."
+          name="phone"
+          value={values.phone}
+          onChange={onChange}
+        />
+      </div>
+
+      <div>
+        <label className={labelClass} htmlFor="measurementProfile">
+          Gender*
+        </label>
+        <select
+          className={`${fieldClass} mt-2`}
+          id="measurementProfile"
+          name="measurementProfile"
+          value={values.measurementProfile}
+          onChange={onChange}
+        >
+          {profileOptions.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+
+  const scaleFields = (
+    <>
       <div className="rounded-lg border border-stone-200 bg-stone-50 p-4">
         <p className="text-sm font-semibold text-stone-950">Scale anchor*</p>
         <p className="mt-1 text-sm text-stone-500">
@@ -149,25 +187,21 @@ function CustomerDetailsFields({ values, profileOptions, onChange }) {
           <p className="mt-3 text-sm text-amber-900">{selectedReference?.detail}</p>
         </div>
       )}
+    </>
+  );
 
-      <div>
-        <label className={labelClass} htmlFor="measurementProfile">
-          Gender*
-        </label>
-        <select
-          className={`${fieldClass} mt-2`}
-          id="measurementProfile"
-          name="measurementProfile"
-          value={values.measurementProfile}
-          onChange={onChange}
-        >
-          {profileOptions.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.label}
-            </option>
-          ))}
-        </select>
-      </div>
+  if (section === "info") {
+    return infoFields;
+  }
+
+  if (section === "scale") {
+    return scaleFields;
+  }
+
+  return (
+    <>
+      {infoFields}
+      {scaleFields}
     </>
   );
 }

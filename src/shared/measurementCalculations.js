@@ -110,11 +110,25 @@ function getTrouserLengthBaseline(profileId, height) {
 }
 
 function getLowerLengthStartCorrection(profileId, height) {
-  return height * (profileId === "female" ? 0.026 : 0.018);
+  return profileId === "female" ? 0 : height * 0.018;
 }
 
 function getInseamBaseline(profileId, height) {
   return height * (profileId === "female" ? 0.435 : 0.44);
+}
+
+function getTopLength(profileId, height, torsoLength, waistToHip) {
+  return profileId === "female"
+    ? torsoLength + waistToHip
+    : torsoLength + height * 0.18;
+}
+
+function getRise(profileId, height) {
+  return height * (profileId === "female" ? 0.19 : 0.155);
+}
+
+function getMeasurementValueKey(field) {
+  return field.key === "waist" && field.group === "Lower body" ? "waistBand" : field.key;
 }
 
 function getCorrectedLength(rawLength, baselineLength, { lowerTolerance = 5, upperTolerance = 6 } = {}) {
@@ -226,6 +240,12 @@ function getDerivedCircumferences(profileId, { chest, waist, hip }) {
   };
 }
 
+function getArmholeMeasurement(profileId, chest, shoulder) {
+  return profileId === "female"
+    ? chest * 0.27 + shoulder * 0.22 + 12.7
+    : chest * 0.29 + shoulder * 0.24 + 10.16;
+}
+
 export function buildManualMeasurements(values) {
   const profile = getProfile(values.measurementProfile);
 
@@ -247,13 +267,17 @@ function pickValue(values, key, fallback) {
 function buildGeneratedMeasurements(customer, values) {
   const profile = getProfile(customer.measurementProfile);
 
-  return getProfileFields(profile).map((field) => ({
-    fieldKey: field.key,
-    label: field.label,
-    valueCm: roundHalf(pickValue(values, field.key, values[field.fallbackKey] || values.chest || values.waist || 0)),
-    note: `${values.notePrefix}: ${field.note}`,
-    group: field.group,
-  }));
+  return getProfileFields(profile).map((field) => {
+    const valueKey = getMeasurementValueKey(field);
+
+    return {
+      fieldKey: field.key,
+      label: field.label,
+      valueCm: roundHalf(pickValue(values, valueKey, values[field.fallbackKey] || values.chest || values.waist || 0)),
+      note: `${values.notePrefix}: ${field.note}`,
+      group: field.group,
+    };
+  });
 }
 
 export function buildBackendMeasurements(customer, backendResult, fallbackMeasurements) {
@@ -261,7 +285,8 @@ export function buildBackendMeasurements(customer, backendResult, fallbackMeasur
   const profile = getProfile(customer.measurementProfile);
 
   return getProfileFields(profile).map((field, index) => {
-    const backendValue = Number(backendMeasurements[field.key]);
+    const valueKey = getMeasurementValueKey(field);
+    const backendValue = Number(backendMeasurements[valueKey]);
     const fallbackMeasurement = fallbackMeasurements[index];
     const valueCm = Number.isFinite(backendValue) && backendValue > 0
       ? roundHalf(backendValue)
@@ -342,14 +367,15 @@ export function processMeasurements(customer) {
   );
   const shoulder = roundHalf(hasPoseMetrics ? shoulderWidth : estimatedShoulder);
   const sleeve = roundHalf(frontSleeve);
-  const topLength = roundHalf(torsoLength + height * 0.13);
+  const topLength = roundHalf(getTopLength(profileId, height, torsoLength, waistToHip));
   const trouserLength = roundHalf(frontTrouser);
-  const rise = roundHalf(height * 0.155);
+  const rise = roundHalf(getRise(profileId, height));
   const inseamBaseline = getInseamBaseline(profileId, height);
   const rawInseam = Math.max(0, (poseHipToAnkle || trouserBaseline - waistToHip) - height * 0.03);
   const inseam = roundHalf(getCorrectedLength(rawInseam, inseamBaseline, { lowerTolerance: 5, upperTolerance: 5.5 }));
   const derivedCircumferences = getDerivedCircumferences(profileId, { chest: generatedChest, waist, hip });
   const neck = roundHalf(derivedCircumferences.neck);
+  const armholeChest = profileId === "female" ? generatedChest : chest;
   const notePrefix = hasPoseMetrics ? "Pose-assisted" : "Estimated";
   const values = {
     notePrefix,
@@ -358,12 +384,13 @@ export function processMeasurements(customer) {
     bust: chest,
     underbust: getConsistentUnderbust(profileId, chest, derivedCircumferences.underbust),
     waist,
+    waistBand: profileId === "female" ? waist + 2 : waist,
     stomach: derivedCircumferences.stomach,
     hip,
     seat: hip,
     shoulder,
     acrossBack: shoulder - 2,
-    armhole: derivedCircumferences.armhole,
+    armhole: getArmholeMeasurement(profileId, armholeChest, shoulder),
     sleeve,
     bicep: derivedCircumferences.bicep,
     wrist: derivedCircumferences.wrist,

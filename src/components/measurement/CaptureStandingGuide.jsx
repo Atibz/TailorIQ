@@ -66,17 +66,13 @@ function CaptureStandingGuide({ measurementProfile, referenceObject, scaleMode }
           <p className="text-sm font-semibold text-stone-950">How to stand</p>
           <p className="mt-1 text-sm text-stone-500">
             {usesReference && selectedReference
-              ? `Wear fitted clothing, then capture one front view and one side view with the ${selectedReference.label.toLowerCase()} visible. ${referenceContent?.description || selectedReference.detail}`
-              : "Wear fitted clothing, then capture one front view and one side view with the whole body visible."}
+              ? `Keep the ${selectedReference.label.toLowerCase()} visible in both photos. ${referenceContent?.description || selectedReference.detail}`
+              : "Use this guide for a clear front view and side view."}
           </p>
         </div>
         <span className="rounded-md bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
           {usesReference && selectedReference ? selectedReference.label : "Capture guide"}
         </span>
-      </div>
-
-      <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
-        Wear fitted clothing so the camera can read your body outline more accurately.
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
@@ -89,9 +85,9 @@ function CaptureStandingGuide({ measurementProfile, referenceObject, scaleMode }
           }
           className="h-auto w-full rounded-lg object-contain"
         />
-        <div className="grid content-start gap-2">
+        <div className="grid content-start gap-2 grid-cols-2">
           {guideItems.map((item) => (
-            <div key={item} className="flex min-h-11 items-center gap-3 rounded-md bg-white px-3 text-sm font-medium text-stone-700">
+            <div key={item} className="flex min-h-11 items-center gap-2 rounded-md bg-white px-3 text-sm font-medium text-stone-700">
               <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
               <span>{item}</span>
             </div>

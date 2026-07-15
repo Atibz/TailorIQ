@@ -59,6 +59,22 @@ function getCorrectedShoulder(profile, rawShoulder, baseline) {
 }
 
 function getFirmChestMeasurement(profile, generatedChest, baselineChest) {
+  if (profile === "female") {
+    let correction = 1;
+
+    if (generatedChest >= 101) {
+      correction = 9.5;
+    } else if (generatedChest >= 96) {
+      correction = 8.5;
+    } else if (generatedChest >= 92) {
+      correction = 6;
+    } else if (generatedChest >= 89) {
+      correction = 3;
+    }
+
+    return clampValue(generatedChest - correction, baselineChest - 4, baselineChest + 8);
+  }
+
   const standardEase = profile === "female" ? 4.5 : 4;
   const lightEase = profile === "female" ? 2 : 1.5;
   const aboveBaseline = generatedChest - baselineChest;
@@ -95,11 +111,21 @@ function getTrouserLengthBaseline(profile, height) {
 }
 
 function getLowerLengthStartCorrection(profile, height) {
-  return height * (profile === "female" ? 0.026 : 0.018);
+  return profile === "female" ? 0 : height * 0.018;
 }
 
 function getInseamBaseline(profile, height) {
   return height * (profile === "female" ? 0.435 : 0.44);
+}
+
+function getTopLength(profile, height, torsoLength, waistToHip) {
+  return profile === "female"
+    ? torsoLength + waistToHip
+    : torsoLength + height * 0.18;
+}
+
+function getRise(profile, height) {
+  return height * (profile === "female" ? 0.19 : 0.155);
 }
 
 function getCorrectedLength(rawLength, baselineLength, { lowerTolerance = 5, upperTolerance = 6 } = {}) {
@@ -122,18 +148,18 @@ function getBustUnderbustGap(profile, bust) {
   }
 
   if (bust < 86) {
-    return { minimum: 7, maximum: 14, target: 10 };
+    return { minimum: 10, maximum: 18, target: 14 };
   }
 
   if (bust < 96) {
-    return { minimum: 8, maximum: 16, target: 12 };
+    return { minimum: 12, maximum: 19, target: 15 };
   }
 
   if (bust < 106) {
-    return { minimum: 9, maximum: 18, target: 14 };
+    return { minimum: 13, maximum: 20, target: 16 };
   }
 
-  return { minimum: 10, maximum: 21, target: 16 };
+  return { minimum: 14, maximum: 22, target: 17 };
 }
 
 function getConsistentUnderbust(profile, bust, underbustCandidate) {
@@ -153,6 +179,21 @@ function getConsistentUnderbust(profile, bust, underbustCandidate) {
   }
 
   return underbustCandidate * 0.7 + (bust - gap.target) * 0.3;
+}
+
+function getStableUnderbust(profile, bust, underbustCandidate) {
+  if (profile !== "female") {
+    return underbustCandidate;
+  }
+
+  const gap = getBustUnderbustGap(profile, bust);
+  const guardedCandidate = getConsistentUnderbust(profile, bust, underbustCandidate);
+  const gapAnchored = bust - gap.target;
+  const guardedGapDifference = Math.abs((bust - guardedCandidate) - gap.target);
+  const candidateWeight = guardedGapDifference <= 3 ? 0.3 : 0.15;
+  const stableUnderbust = blendValues(guardedCandidate, gapAnchored, candidateWeight);
+
+  return clampValue(stableUnderbust, bust - gap.maximum, bust - gap.minimum);
 }
 
 function getCircumferenceBaseline(profile, height) {
@@ -211,6 +252,12 @@ function getDerivedCircumferences(profile, { chest, waist, hip }) {
   };
 }
 
+function getArmholeMeasurement(profile, chest, shoulder) {
+  return profile === "female"
+    ? chest * 0.27 + shoulder * 0.22 + 12.7
+    : chest * 0.29 + shoulder * 0.24 + 10.16;
+}
+
 function ellipseCircumference(width, depth) {
   const a = Math.max(width / 2, 1);
   const b = Math.max(depth / 2, 1);
@@ -257,6 +304,14 @@ function chooseCircumference({ silhouetteSample, poseValue, baselineValue, expec
   }
 
   return fallbackValue;
+}
+
+function chooseScannedCircumference({ silhouetteSample, fallbackValue, minimum, maximum }) {
+  if (!silhouetteSample?.circumferenceCm) {
+    return fallbackValue;
+  }
+
+  return clampValue(silhouetteSample.circumferenceCm, minimum, maximum);
 }
 
 function parseRaster(raster) {
@@ -386,6 +441,56 @@ function sampleMaskWidth(mask, raster, normalizedY, centerX) {
   return median(widths);
 }
 
+function sampleSilhouetteAtLevel({ frontMask, sideMask, frontRaster, sideRaster, frontCmPerPixel, sideCmPerPixel, frontCenterX, sideCenterX }, normalizedY) {
+  const frontWidth = sampleMaskWidth(frontMask, frontRaster, normalizedY, frontCenterX);
+  const sideDepth = sampleMaskWidth(sideMask, sideRaster, normalizedY, sideCenterX);
+
+  if (!frontWidth || !sideDepth) {
+    return null;
+  }
+
+  const widthCm = frontWidth * frontCmPerPixel;
+  const depthCm = sideDepth * sideCmPerPixel;
+
+  return {
+    level: normalizedY,
+    widthCm,
+    depthCm,
+    circumferenceCm: ellipseCircumference(widthCm, depthCm),
+  };
+}
+
+function findSilhouetteLevel(context, { start, end, mode = "narrowest", fallback }) {
+  const lower = clampValue(Math.min(start, end), 0.02, 0.98);
+  const upper = clampValue(Math.max(start, end), lower + 0.01, 0.98);
+  const steps = 18;
+  let best = null;
+
+  for (let index = 0; index <= steps; index += 1) {
+    const level = lower + ((upper - lower) * index) / steps;
+    const sample = sampleSilhouetteAtLevel(context, level);
+
+    if (!sample) {
+      continue;
+    }
+
+    if (!best) {
+      best = sample;
+      continue;
+    }
+
+    if (mode === "widest" && sample.circumferenceCm > best.circumferenceCm) {
+      best = sample;
+    }
+
+    if (mode === "narrowest" && sample.circumferenceCm < best.circumferenceCm) {
+      best = sample;
+    }
+  }
+
+  return best || sampleSilhouetteAtLevel(context, fallback);
+}
+
 function getLevel(metrics, key, fallback) {
   const value = metrics?.silhouetteLevels?.[key];
 
@@ -398,7 +503,7 @@ function getCenterX(metrics) {
   return Number.isFinite(value) ? clampValue(value, 0.18, 0.82) : 0.5;
 }
 
-function buildSilhouetteMeasurements(payload, height) {
+function buildSilhouetteMeasurements(payload, height, profile) {
   const frontRaster = parseRaster(payload.rasters?.front);
   const sideRaster = parseRaster(payload.rasters?.side);
   const frontMetrics = payload.poseMetrics?.front;
@@ -418,7 +523,8 @@ function buildSilhouetteMeasurements(payload, height) {
   const sideCmPerPixel = height / sideBodyPixelHeight;
   const frontCenterX = getCenterX(frontMetrics);
   const sideCenterX = getCenterX(sideMetrics);
-  const levels = {
+  const poseLevels = {
+    shoulderY: getLevel(frontMetrics, "shoulderY", 0.24),
     chest: getLevel(frontMetrics, "chestY", 0.34),
     underbust: getLevel(frontMetrics, "underbustY", 0.4),
     waist: getLevel(frontMetrics, "waistY", 0.48),
@@ -427,38 +533,71 @@ function buildSilhouetteMeasurements(payload, height) {
     knee: getLevel(frontMetrics, "kneeY", 0.78),
     ankle: getLevel(frontMetrics, "ankleY", 0.93),
   };
-  const sideLevels = {
-    chest: getLevel(sideMetrics, "chestY", levels.chest),
-    underbust: getLevel(sideMetrics, "underbustY", levels.underbust),
-    waist: getLevel(sideMetrics, "waistY", levels.waist),
-    hip: getLevel(sideMetrics, "hipY", levels.hip),
-    thigh: getLevel(sideMetrics, "thighY", levels.thigh),
-    knee: getLevel(sideMetrics, "kneeY", levels.knee),
-    ankle: getLevel(sideMetrics, "ankleY", levels.ankle),
+  const context = {
+    frontMask,
+    sideMask,
+    frontRaster,
+    sideRaster,
+    frontCmPerPixel,
+    sideCmPerPixel,
+    frontCenterX,
+    sideCenterX,
   };
-  const sample = (key) => {
-    const frontWidth = sampleMaskWidth(frontMask, frontRaster, levels[key], frontCenterX);
-    const sideDepth = sampleMaskWidth(sideMask, sideRaster, sideLevels[key], sideCenterX);
-
-    if (!frontWidth || !sideDepth) {
-      return null;
-    }
-
-    return {
-      widthCm: frontWidth * frontCmPerPixel,
-      depthCm: sideDepth * sideCmPerPixel,
-      circumferenceCm: ellipseCircumference(frontWidth * frontCmPerPixel, sideDepth * sideCmPerPixel),
-    };
-  };
+  const torsoHeight = Math.max(poseLevels.hip - poseLevels.shoulderY, 0.08);
+  const bodyHeightRatio = frontBodyPixelHeight / frontRaster.height;
+  const sample = (level) => sampleSilhouetteAtLevel(context, level);
+  const underbustLevel = clampValue(
+    poseLevels.chest + torsoHeight * 0.16,
+    poseLevels.chest,
+    poseLevels.waist - torsoHeight * 0.08,
+  );
+  const waist = findSilhouetteLevel(context, {
+    start: poseLevels.underbust + torsoHeight * 0.12,
+    end: poseLevels.hip - torsoHeight * 0.2,
+    mode: "narrowest",
+    fallback: poseLevels.waist,
+  });
+  const waistLevel = waist?.level || poseLevels.waist;
+  const waistBandLevel = profile === "female"
+    ? clampValue(waistLevel + torsoHeight * 0.15, waistLevel, poseLevels.hip - torsoHeight * 0.08)
+    : waistLevel;
+  const highHipLevel = clampValue(
+    waistBandLevel + torsoHeight * 0.08,
+    waistBandLevel + torsoHeight * 0.04,
+    poseLevels.hip - torsoHeight * 0.04,
+  );
+  const highHip = sample(highHipLevel);
+  const hip = sample(poseLevels.hip);
+  const thigh = findSilhouetteLevel(context, {
+    start: poseLevels.hip + (poseLevels.knee - poseLevels.hip) * 0.12,
+    end: poseLevels.hip + (poseLevels.knee - poseLevels.hip) * 0.45,
+    mode: "widest",
+    fallback: poseLevels.thigh,
+  });
 
   return {
-    chest: sample("chest"),
-    underbust: sample("underbust"),
-    waist: sample("waist"),
-    hip: sample("hip"),
-    thigh: sample("thigh"),
-    knee: sample("knee"),
-    ankle: sample("ankle"),
+    chest: sample(poseLevels.chest),
+    underbust: sample(underbustLevel),
+    waist,
+    waistBand: sample(waistBandLevel),
+    highHip,
+    hip,
+    thigh,
+    knee: sample(poseLevels.knee),
+    ankle: sample(poseLevels.ankle),
+    levels: {
+      shoulder: poseLevels.shoulderY,
+      chest: poseLevels.chest,
+      underbust: underbustLevel,
+      waist: waistLevel,
+      waistBand: waistBandLevel,
+      highHip: highHipLevel,
+      hip: poseLevels.hip,
+      thigh: thigh?.level || poseLevels.thigh,
+      knee: poseLevels.knee,
+      ankle: poseLevels.ankle,
+    },
+    bodyHeightRatio,
     frontCmPerPixel,
     sideCmPerPixel,
   };
@@ -470,7 +609,14 @@ function buildMeasurements(payload) {
   const frontPose = payload.poseMetrics?.front;
   const hasPoseMetrics = Boolean(frontPose);
   const baseline = getCircumferenceBaseline(profile, height);
-  const silhouette = buildSilhouetteMeasurements(payload, height);
+  const silhouette = buildSilhouetteMeasurements(payload, height, profile);
+  const getSilhouetteLevelDistance = (startLevel, endLevel) => {
+    if (!silhouette?.bodyHeightRatio || !Number.isFinite(startLevel) || !Number.isFinite(endLevel)) {
+      return null;
+    }
+
+    return Math.max(0, ((endLevel - startLevel) / silhouette.bodyHeightRatio) * height);
+  };
   const estimatedShoulder = getShoulderBaseline(profile, height);
   const rawShoulderWidth = scaledRatio(frontPose, "shoulderWidthRatio", height, estimatedShoulder);
   const shoulderWidth = hasPoseMetrics
@@ -481,12 +627,12 @@ function buildMeasurements(payload) {
   const sleeveBaseline = getSleeveBaseline(profile, height);
   const rawSleeve = scaledRatio(frontPose, "sleeveLengthRatio", height, sleeveBaseline);
   const sleeve = hasPoseMetrics ? getCorrectedSleeve(profile, rawSleeve, sleeveBaseline) : sleeveBaseline;
-  const waistToHip = height * getWaistToHipRatio(profile);
+  const estimatedWaistToHip = height * getWaistToHipRatio(profile);
   const poseHipToAnkle = scaledOptionalRatio(frontPose, "trouserLengthRatio", height);
   const lowerLengthStartCorrection = getLowerLengthStartCorrection(profile, height);
   const trouserBaseline = getTrouserLengthBaseline(profile, height) - lowerLengthStartCorrection;
   const rawTrouserLength = poseHipToAnkle
-    ? poseHipToAnkle + waistToHip - lowerLengthStartCorrection
+    ? poseHipToAnkle + estimatedWaistToHip - lowerLengthStartCorrection
     : trouserBaseline;
   const trouserLength = hasPoseMetrics
     ? getCorrectedLength(rawTrouserLength, trouserBaseline, { lowerTolerance: 5, upperTolerance: 6 })
@@ -523,6 +669,16 @@ function buildMeasurements(payload) {
       })
       : baseline.waist,
   );
+  const waistBand = roundHalf(
+    profile === "female"
+      ? chooseScannedCircumference({
+        silhouetteSample: silhouette?.waistBand,
+        fallbackValue: waist + 2,
+        minimum: waist - 2,
+        maximum: waist + Math.max(waist * 0.12, 8),
+      })
+      : waist,
+  );
   const hip = roundHalf(
     hasPoseMetrics
       ? chooseCircumference({
@@ -534,39 +690,37 @@ function buildMeasurements(payload) {
       : baseline.hip,
   );
   const derived = getDerivedCircumferences(profile, { chest: generatedChest, waist, hip });
-  const rise = roundHalf(height * 0.155);
+  const rise = roundHalf(getRise(profile, height));
   const inseamBaseline = getInseamBaseline(profile, height);
-  const rawInseam = Math.max(0, (poseHipToAnkle || trouserBaseline - waistToHip) - height * 0.03);
+  const rawInseam = Math.max(0, (poseHipToAnkle || trouserBaseline - estimatedWaistToHip) - height * 0.03);
   const inseam = getCorrectedLength(rawInseam, inseamBaseline, { lowerTolerance: 5, upperTolerance: 5.5 });
-  const underbustCandidate = roundHalf(chooseCircumference({
+  const underbustCandidate = roundHalf(chooseScannedCircumference({
     silhouetteSample: silhouette?.underbust,
-    poseValue: derived.underbust,
-    baselineValue: derived.underbust,
-    expectedWidth: chestWidth * 0.86,
-    tolerance: 0.18,
+    fallbackValue: derived.underbust,
+    minimum: derived.underbust - Math.max(derived.underbust * 0.12, 7),
+    maximum: derived.underbust + Math.max(derived.underbust * 0.1, 6),
   }));
-  const underbust = roundHalf(getConsistentUnderbust(profile, chest, underbustCandidate));
-  const thigh = roundHalf(chooseCircumference({
-    silhouetteSample: silhouette?.thigh,
-    poseValue: derived.thigh,
-    baselineValue: derived.thigh,
-    expectedWidth: hipWidth * 0.52,
-    tolerance: 0.22,
-  }));
-  const knee = roundHalf(chooseCircumference({
-    silhouetteSample: silhouette?.knee,
-    poseValue: derived.knee,
-    baselineValue: derived.knee,
-    expectedWidth: hipWidth * 0.34,
-    tolerance: 0.22,
-  }));
-  const ankle = roundHalf(chooseCircumference({
+  const underbust = roundHalf(getStableUnderbust(profile, chest, underbustCandidate));
+  const thigh = roundHalf(derived.thigh);
+  const knee = roundHalf(derived.knee);
+  const ankle = roundHalf(chooseScannedCircumference({
     silhouetteSample: silhouette?.ankle,
-    poseValue: derived.ankle,
-    baselineValue: derived.ankle,
-    expectedWidth: hipWidth * 0.2,
-    tolerance: 0.25,
+    fallbackValue: derived.ankle,
+    minimum: derived.ankle - Math.max(derived.ankle * 0.16, 4),
+    maximum: derived.ankle + Math.max(derived.ankle * 0.16, 4),
   }));
+  const highHip = roundHalf(derived.highHip);
+  const waistToHip = height * getWaistToHipRatio(profile);
+  const topLengthTargetLevel = profile === "female" ? silhouette?.levels?.highHip : silhouette?.levels?.hip;
+  const topLength = getSilhouetteLevelDistance(silhouette?.levels?.shoulder, topLengthTargetLevel)
+    || getTopLength(profile, height, torsoLength, estimatedWaistToHip);
+  const armholeChest = profile === "female" ? generatedChest : chest;
+  const armhole = roundHalf(getArmholeMeasurement(profile, armholeChest, shoulderWidth));
+  const shoulderToWaist = getSilhouetteLevelDistance(silhouette?.levels?.shoulder, silhouette?.levels?.waist);
+  const frontLength = shoulderToWaist || height * 0.27;
+  const backLength = shoulderToWaist
+    ? Math.max(shoulderToWaist - (profile === "female" ? 2 : 1), height * 0.2)
+    : height * 0.25;
 
   return {
     measurements: {
@@ -575,20 +729,21 @@ function buildMeasurements(payload) {
       bust: chest,
       underbust,
       waist,
+      waistBand,
       stomach: roundHalf(derived.stomach),
       hip,
       seat: hip,
       shoulder: roundHalf(shoulderWidth),
       acrossBack: roundHalf(shoulderWidth - 2),
-      armhole: roundHalf(derived.armhole),
+      armhole,
       sleeve: roundHalf(sleeve),
       bicep: roundHalf(derived.bicep),
       wrist: roundHalf(derived.wrist),
-      topLength: roundHalf(torsoLength + height * 0.13),
+      topLength: roundHalf(topLength),
       bustPoint: roundHalf(height * 0.16),
       bustSpan: roundHalf(derived.bustSpan),
-      frontLength: roundHalf(height * 0.27),
-      backLength: roundHalf(height * 0.25),
+      frontLength: roundHalf(frontLength),
+      backLength: roundHalf(backLength),
       trouserLength: roundHalf(trouserLength),
       lowerLength: roundHalf(trouserLength),
       inseam: roundHalf(inseam),
@@ -596,7 +751,7 @@ function buildMeasurements(payload) {
       thigh,
       knee,
       ankle,
-      highHip: roundHalf(derived.highHip),
+      highHip,
       waistToHip: roundHalf(waistToHip),
     },
     confidence: {
@@ -613,15 +768,25 @@ function buildMeasurements(payload) {
       heightCm: roundHalf(height),
       usedPoseMetrics: hasPoseMetrics,
       usedSilhouetteSampling: Boolean(silhouette),
-      circumferenceGuard: "silhouette-cannot-shrink-more-than-2cm-v1",
+      circumferenceGuard: "direct-scanned-rows-with-profile-clamps-v1",
+      silhouetteSelection: {
+        waist: "narrowest torso row",
+        highHip: "derived from restored hip relationship",
+        hip: "restored blended hip estimator",
+        underbust: "row just below bust",
+        thigh: "restored derived thigh relationship",
+        knee: "restored derived knee relationship",
+        waistToHip: "profile ratio from natural waist to high hip",
+        topLength: profile === "female" ? "shoulder row to high hip row" : "shoulder row to hip/seat row",
+      },
       chestCalculation: {
-        mode: "firm-output-chest-v2",
+        mode: "female-bust-band-correction-v3",
         generatedCm: generatedChest,
         finalCm: chest,
         correctionCm: roundHalf(generatedChest - chest),
       },
       underbustCalculation: {
-        mode: "bust-underbust-gap-guard-v1",
+        mode: "wider-bust-underbust-gap-v3",
         candidateCm: underbustCandidate,
         finalCm: underbust,
         bustUnderbustGapCm: roundHalf(chest - underbust),
@@ -631,6 +796,20 @@ function buildMeasurements(payload) {
         baselineCm: roundHalf(estimatedShoulder),
         rawPoseCm: roundHalf(rawShoulderWidth),
         correctedCm: roundHalf(shoulderWidth),
+      },
+      armholeCalculation: {
+        mode: "upper-frame-chest-shoulder-v3",
+        chestCm: chest,
+        frameChestCm: armholeChest,
+        shoulderCm: roundHalf(shoulderWidth),
+        finalCm: armhole,
+      },
+      bodiceLengthCalculation: {
+        mode: "shoulder-to-natural-waist-row-v1",
+        shoulderLevel: silhouette?.levels?.shoulder ?? null,
+        waistLevel: silhouette?.levels?.waist ?? null,
+        frontLengthCm: roundHalf(frontLength),
+        backLengthCm: roundHalf(backLength),
       },
       sleeveCalculation: {
         mode: "adaptive-pose-sleeve-v1",
@@ -658,10 +837,13 @@ function buildMeasurements(payload) {
         ? {
           chest: silhouette.chest,
           waist: silhouette.waist,
+          waistBand: silhouette.waistBand,
+          highHip: silhouette.highHip,
           hip: silhouette.hip,
           thigh: silhouette.thigh,
           knee: silhouette.knee,
           ankle: silhouette.ankle,
+          levels: silhouette.levels,
         }
         : null,
     },

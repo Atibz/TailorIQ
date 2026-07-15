@@ -372,6 +372,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   const [guidelines, setGuidelines] = useState(() => getEmptyGuidelines(captureSettings));
   const [poseStatus, setPoseStatus] = useState("Pose model not loaded");
   const [poseMessage, setPoseMessage] = useState("Start the camera to begin automatic checks");
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -390,6 +391,16 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
   useEffect(() => {
     activeCaptureRef.current = activeCapture;
+  }, [activeCapture]);
+
+  useEffect(() => {
+    latestPoseMetricsRef.current = null;
+    setGuidelines(getEmptyGuidelines(captureSettingsRef.current));
+    setPoseMessage(
+      activeCapture === "front"
+        ? "Place the full front view inside the guide."
+        : "Turn to the side and keep the full body inside the guide.",
+    );
   }, [activeCapture]);
 
   useEffect(() => {
@@ -513,6 +524,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
         await videoRef.current.play();
       }
 
+      setIsCameraActive(true);
       setPoseStatus("Loading MediaPipe Pose in background");
       setPoseMessage("Camera is open. Vision checks are loading.");
 
@@ -534,8 +546,24 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
         setPoseMessage("Camera is open, but pose checks could not load. Check internet access.");
       }
     } catch {
+      setIsCameraActive(false);
       setError("Allow camera access in your browser.");
     }
+  };
+
+  const stopCamera = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+    setPoseMessage("Start the camera to begin automatic checks");
   };
 
   const capturePhoto = () => {
@@ -660,6 +688,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     setGuidelines(getEmptyGuidelines(captureSettingsRef.current));
     setActiveCapture("front");
     setPoseMessage("Start the camera to begin automatic checks");
+    stopCamera();
   };
 
   return {
@@ -670,12 +699,14 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     guidelines,
     guidelineLabels,
     handleUploadPhoto,
+    isCameraActive,
     photos,
     poseMessage,
     poseStatus,
     resetCapture,
     retakePhoto,
     startCamera,
+    stopCamera,
     uploadStatus,
     videoRef,
   };
