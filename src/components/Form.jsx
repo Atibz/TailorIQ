@@ -122,6 +122,48 @@ function CompletionStatus({ items }) {
   );
 }
 
+function ProcessingMeasurementPanel() {
+  const steps = [
+    "Syncing front and side views",
+    "Reading pose landmarks",
+    "Extracting silhouette data",
+    "Calculating body measurements",
+  ];
+
+  return (
+    <div className="tiq-processing-panel overflow-hidden rounded-xl border border-[#ff9f00]/35 bg-[#111111] p-4 text-white shadow-lg">
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#ff9f00]">Measurement engine</p>
+          <h3 className="mt-2 text-xl font-semibold">Running visual analysis</h3>
+          <p className="mt-2 text-sm leading-6 text-white/70">
+            Scanning photo views, aligning pose landmarks, sampling silhouette data, and preparing tailor-ready estimates.
+          </p>
+        </div>
+
+        <div className="tiq-processing-orb relative mx-auto h-28 w-28 rounded-full border border-[#ff9f00]/35">
+          <span className="absolute inset-4 rounded-full border border-white/15" />
+          <span className="absolute inset-8 rounded-full bg-[#ff9f00]" />
+          <span className="tiq-processing-sweep absolute left-1/2 top-1/2 h-1 w-14 origin-left rounded-full bg-[#ff9f00]" />
+        </div>
+      </div>
+
+      <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+        <span className="tiq-processing-progress block h-full rounded-full bg-[#ff9f00]" />
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {steps.map((step, index) => (
+          <div key={step} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+            <span className="tiq-processing-dot h-2.5 w-2.5 rounded-full bg-[#ff9f00]" style={{ animationDelay: `${index * 0.35}s` }} />
+            <span className="text-sm font-medium text-white/82">{step}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SelfCaptureSetup() {
   const steps = [
     "Place your phone upright on a table.",
@@ -803,10 +845,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
           <div className="space-y-3">
           <CompletionStatus items={completionItems} />
           {isProcessing && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <p className="font-semibold text-stone-950">Processing photos...</p>
-              <p className="mt-1">Uploading views, running segmentation, estimating measurements, and preparing review.</p>
-            </div>
+            <ProcessingMeasurementPanel />
           )}
           </div>
         )}
