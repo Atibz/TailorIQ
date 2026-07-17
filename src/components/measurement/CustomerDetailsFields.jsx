@@ -60,6 +60,27 @@ function CustomerDetailsFields({ isClientMode = false, section = "all", values, 
 
   const scaleFields = (
     <>
+      {isClientMode && (
+        <div>
+          <label className={labelClass} htmlFor="measurementProfile">
+            Gender*
+          </label>
+          <select
+            className={`${fieldClass} mt-2`}
+            id="measurementProfile"
+            name="measurementProfile"
+            value={values.measurementProfile}
+            onChange={onChange}
+          >
+            {profileOptions.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="rounded-lg border border-stone-200 bg-stone-50 p-4">
         <p className="text-sm font-semibold text-stone-950">Scale anchor*</p>
         <p className="mt-1 text-sm text-stone-500">

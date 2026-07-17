@@ -460,8 +460,10 @@ function ConfirmDeleteModal({ action, onCancel, onConfirm }) {
   );
 }
 
-function AuthPage({ onLogin, onSignup, theme, onToggleTheme }) {
+function AuthPage({ onLogin, onSignup }) {
   const [authMode, setAuthMode] = useState("login");
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formValues, setFormValues] = useState({
     fullName: "",
     username: "",
@@ -500,11 +502,172 @@ function AuthPage({ onLogin, onSignup, theme, onToggleTheme }) {
   };
 
   return (
-    <main className="tiq-auth-page min-h-screen px-4 py-8 text-stone-900 sm:px-6">
-      <div className="mx-auto mb-4 flex max-w-6xl justify-end">
-        <ThemeSwitch theme={theme} onToggle={onToggleTheme} />
-      </div>
-      <section className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_0.9fr]">
+    <main className="tiq-auth-page flex min-h-screen items-center justify-center px-4 py-8 text-stone-900 sm:px-6">
+      <section className="-mx-4 -my-8 w-[calc(100%+2rem)] sm:-mx-6 sm:w-[calc(100%+3rem)] md:hidden">
+        {!authPanelOpen ? (
+          <div className="tiq-mobile-auth-card flex min-h-screen flex-col items-center justify-center gap-10 overflow-hidden px-5 py-8">
+            <div className="w-full max-w-xs">
+              <TailorIQWordmark />
+            </div>
+            <div className="mt-12 grid w-full max-w-xs gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("signup");
+                  setAuthPanelOpen(true);
+                  setAuthError("");
+                  setShowPassword(false);
+                }}
+                className="min-h-12 rounded-full bg-white px-5 text-sm font-bold text-[#111111] shadow-sm transition hover:bg-stone-100"
+              >
+                Sign up
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthPanelOpen(true);
+                  setAuthError("");
+                  setShowPassword(false);
+                }}
+                className="min-h-12 rounded-full bg-[#111111] px-5 text-sm font-bold text-[#ff9f00] shadow-sm transition hover:bg-black"
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="overflow-hidden rounded-[1.75rem] bg-white shadow-2xl"
+          >
+            <div className="tiq-mobile-auth-card relative min-h-40 px-5 py-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthPanelOpen(false);
+                  setAuthError("");
+                }}
+                className="grid h-9 w-9 place-items-center rounded-full border border-stone-200 bg-white text-[#111111] shadow-sm"
+                aria-label="Back to auth options"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.42-1.41L7.83 13H20v-2Z" />
+                </svg>
+              </button>
+              <div className="mt-7 text-center">
+                <p className="text-2xl font-semibold text-stone-950">
+                  {isSignup ? "Register" : "Welcome back"}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-stone-700">
+                  {isSignup ? "Create your new account" : "Login to your account"}
+                </p>
+              </div>
+            </div>
+
+            <div className="-mt-8 rounded-t-[2rem] bg-white px-5 pb-5 pt-10">
+              <div className="grid grid-cols-2 rounded-full bg-stone-100 p-1">
+                {[
+                  { id: "login", label: "Login" },
+                  { id: "signup", label: "Sign up" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setAuthMode(item.id);
+                      setAuthError("");
+                      setShowPassword(false);
+                    }}
+                    className={`min-h-10 rounded-full text-sm font-semibold transition ${
+                      authMode === item.id ? "bg-[#111111] text-[#ff9f00] shadow-sm" : "text-stone-600 hover:bg-white"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                {isSignup && (
+                  <label className="text-sm font-semibold text-stone-800">
+                    Full name
+                    <input
+                      type="text"
+                      name="fullName"
+                      value={formValues.fullName}
+                      onChange={handleChange}
+                      className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                      placeholder="Your name"
+                    />
+                  </label>
+                )}
+                <label className="text-sm font-semibold text-stone-800">
+                  Email / Username
+                  <input
+                    type="text"
+                    name="username"
+                    value={formValues.username}
+                    onChange={handleChange}
+                    className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                    placeholder="email or username"
+                    autoCapitalize="none"
+                  />
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  Password
+                  <span className="relative mt-2 block">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      value={formValues.password}
+                      onChange={handleChange}
+                      className="min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 pr-12 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                      placeholder="Password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((currentValue) => !currentValue)}
+                      className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-stone-500 transition hover:bg-white hover:text-stone-950"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      <span className="text-xs font-bold">{showPassword ? "Hide" : "View"}</span>
+                    </button>
+                  </span>
+                </label>
+              </div>
+
+              {authError && (
+                <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="mt-7 min-h-12 w-full rounded-full bg-[#111111] px-5 text-sm font-bold text-[#ff9f00] transition hover:bg-black"
+              >
+                {isSignup ? "Sign up" : "Login"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode(isSignup ? "login" : "signup");
+                  setAuthError("");
+                  setShowPassword(false);
+                }}
+                className="mt-3 w-full text-center text-xs font-semibold text-stone-500"
+              >
+                {isSignup ? "Already have an account? Login" : "Don't have an account? Sign up"}
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+
+      <section className="mx-auto hidden min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-8 md:grid lg:grid-cols-[1fr_0.9fr]">
         <div className="tiq-auth-hero">
           <TailorIQWordmark />
           <h1 className="mt-4 max-w-xl text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
@@ -527,6 +690,7 @@ function AuthPage({ onLogin, onSignup, theme, onToggleTheme }) {
                 onClick={() => {
                   setAuthMode(item.id);
                   setAuthError("");
+                  setShowPassword(false);
                 }}
                 className={`min-h-10 rounded-md text-sm font-semibold transition ${
                   authMode === item.id ? "tiq-primary-action shadow-sm" : "text-stone-600 hover:bg-white"
@@ -561,27 +725,36 @@ function AuthPage({ onLogin, onSignup, theme, onToggleTheme }) {
               </label>
             )}
             <label className="text-sm font-semibold text-stone-800">
-              Username
+              Email / Username
               <input
                 type="text"
                 name="username"
                 value={formValues.username}
                 onChange={handleChange}
                 className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                placeholder="username"
+                placeholder="email or username"
                 autoCapitalize="none"
               />
             </label>
             <label className="text-sm font-semibold text-stone-800">
               Password
-              <input
-                type="password"
-                name="password"
-                value={formValues.password}
-                onChange={handleChange}
-                className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                placeholder="Password"
-              />
+              <span className="relative mt-2 block">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formValues.password}
+                  onChange={handleChange}
+                  className="min-h-11 w-full rounded-md border border-stone-300 px-3 pr-14 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                  placeholder="Password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((currentValue) => !currentValue)}
+                  className="absolute right-2 top-1/2 min-h-8 -translate-y-1/2 rounded-md px-2 text-xs font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-950"
+                >
+                  {showPassword ? "Hide" : "View"}
+                </button>
+              </span>
             </label>
           </div>
 
@@ -3015,7 +3188,7 @@ function App() {
   };
 
   if (!currentUser) {
-    return <AuthPage onLogin={handleLogin} onSignup={handleSignup} theme={theme} onToggleTheme={handleToggleTheme} />;
+    return <AuthPage onLogin={handleLogin} onSignup={handleSignup} />;
   }
 
   if (!userMode) {
@@ -3104,6 +3277,7 @@ function App() {
               <Form
                 key={activeMeasurementDraftId || "new-measurement"}
                 appMode={userMode}
+                currentUser={currentUser}
                 initialDraft={activeMeasurementDraft}
                 onBack={() => {
                   if (!isClientMode && !activeMeasurementDraft && measurementEntryMode === "photo") {

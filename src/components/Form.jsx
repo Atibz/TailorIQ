@@ -19,9 +19,22 @@ const initialValues = {
   captureQuality: 0,
 };
 
+function unlockSpeechGuidance(message = "Audio guidance enabled.") {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.resume?.();
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.rate = 0.95;
+  utterance.volume = 0.75;
+  window.speechSynthesis.speak(utterance);
+}
+
 function WorkflowProgress({ steps }) {
   return (
-    <div className="sticky top-0 z-20 -mx-5 border-y border-stone-200 bg-white/95 px-5 py-3 backdrop-blur">
+    <div className="sticky top-0 z-20 border-y border-stone-200 bg-white/95 py-3 backdrop-blur">
       <div className="flex gap-2 overflow-x-auto">
         {steps.map((step, index) => (
           <div
@@ -114,26 +127,54 @@ function SelfCaptureSetup() {
     "Place your phone upright on a table.",
     "Support it with books or an open laptop so it does not fall.",
     "Step back slowly until your whole body fits inside the guide.",
-    "Wear fitted clothes and stand straight with arms relaxed.",
+    "Wear fitted clothes and stand straight with arms slightly away from the body.",
   ];
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-      <div className="overflow-hidden rounded-xl border border-stone-200 bg-[linear-gradient(135deg,#FF9F00_0%,#F1F1F1_54%,#FFF3D6_100%)] p-5">
-        <div className="relative mx-auto flex min-h-72 max-w-md items-end justify-center">
-          <div className="absolute bottom-10 left-4 right-4 h-4 rounded-full bg-[#111111]/20" />
-          <div className="absolute bottom-12 left-8 h-7 w-24 rounded-md bg-[#A31621] shadow-md" />
-          <div className="absolute bottom-[4.75rem] left-14 h-7 w-28 rounded-md bg-[#111111] shadow-md" />
-          <div className="absolute bottom-[6.5rem] left-20 h-7 w-24 rounded-md bg-[#000004] shadow-md" />
-          <div className="absolute bottom-[7.7rem] left-[7.4rem] h-28 w-16 animate-[phone-tilt_3s_ease-in-out_infinite] rounded-xl border-[6px] border-[#000004] bg-[#F1F1F1] shadow-xl">
-            <span className="absolute left-1/2 top-2 h-1.5 w-6 -translate-x-1/2 rounded-full bg-[#000004]/50" />
-            <span className="absolute inset-x-2 bottom-3 top-5 rounded-md border border-[#111111]/30 bg-[#FF9F00]/40" />
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-[linear-gradient(135deg,#fff8e1_0%,#f7f4ec_48%,#ffd27a_100%)] p-4 shadow-sm">
+        <div className="tiq-self-capture-animation relative mx-auto min-h-[23rem] max-w-md overflow-hidden rounded-lg border border-white/70 bg-[#111111] shadow-inner">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,159,0,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,159,0,0.08)_1px,transparent_1px)] bg-[size:32px_32px]" />
+          <div className="absolute inset-x-6 top-5 h-14 rounded-full bg-[#ff9f00]/20 blur-3xl" />
+
+          <div className="absolute bottom-8 left-5 right-5 h-3 rounded-full bg-black/55" />
+
+          <div className="tiq-setup-stack absolute bottom-10 left-7 h-7 w-24 rounded-md bg-[#ff9f00] shadow-lg" />
+          <div className="tiq-setup-stack absolute bottom-[4.35rem] left-11 h-7 w-28 rounded-md bg-white shadow-lg [animation-delay:0.25s]" />
+          <div className="tiq-setup-stack absolute bottom-[6.1rem] left-16 h-7 w-24 rounded-md bg-[#2a2412] shadow-lg [animation-delay:0.5s]" />
+
+          <div className="tiq-animated-phone absolute bottom-[7.25rem] left-[5.6rem] h-32 w-20 rounded-[1.25rem] border-[6px] border-[#ff9f00] bg-[#070707] shadow-2xl">
+            <span className="absolute left-1/2 top-2 h-1.5 w-7 -translate-x-1/2 rounded-full bg-white/60" />
+            <span className="absolute inset-x-2 bottom-4 top-6 rounded-lg border border-[#ff9f00]/50 bg-[radial-gradient(circle_at_center,transparent_34%,rgba(255,159,0,0.25)_35%,rgba(255,159,0,0.08)_62%,transparent_63%)]" />
+            <span className="absolute inset-x-5 bottom-7 top-10 rounded-[45%] border border-white/70" />
           </div>
-          <div className="absolute bottom-10 right-20 h-32 w-20 rounded-t-full bg-white/80 shadow-[0_0_0_2px_rgba(53,86,145,0.25)]" />
-          <div className="absolute bottom-4 right-[6.7rem] h-16 w-6 rounded-full bg-white/80" />
-          <div className="absolute bottom-4 right-[4.7rem] h-16 w-6 rounded-full bg-white/80" />
-          <div className="absolute bottom-24 right-10 h-px w-24 border-t border-dashed border-[#111111]" />
-          <div className="absolute bottom-28 right-8 rounded-full bg-[#111111] px-3 py-1 text-xs font-bold text-white">5-7 steps</div>
+
+          <div className="tiq-step-path absolute bottom-20 left-[9.2rem] h-px w-36 border-t border-dashed border-[#ff9f00]" />
+          <div className="tiq-step-label absolute bottom-[5.7rem] left-[10.3rem] rounded-full bg-[#ff9f00] px-3 py-1 text-xs font-bold text-[#111111] shadow-lg">5-7 steps</div>
+
+          <div className="tiq-capture-frame absolute bottom-12 right-8 top-10 w-32 rounded-[48%] border-2 border-white/65 shadow-[0_0_0_1px_rgba(255,255,255,0.14)]" />
+
+          <div className="tiq-self-person absolute bottom-11 right-16 h-44 w-16">
+            <span className="absolute left-1/2 top-0 h-8 w-8 -translate-x-1/2 rounded-full bg-white shadow" />
+            <span className="absolute left-1/2 top-8 h-20 w-11 -translate-x-1/2 rounded-t-full bg-white shadow" />
+            <span className="absolute left-[0.35rem] top-12 h-20 w-3 origin-top rounded-full bg-white" />
+            <span className="absolute right-[0.35rem] top-12 h-20 w-3 origin-top rounded-full bg-white" />
+            <span className="absolute left-[1.15rem] top-[6.8rem] h-16 w-3 rounded-full bg-white" />
+            <span className="absolute right-[1.15rem] top-[6.8rem] h-16 w-3 rounded-full bg-white" />
+          </div>
+
+          <div className="tiq-side-person absolute bottom-11 right-16 h-44 w-12 opacity-0">
+            <span className="absolute left-1/2 top-0 h-8 w-7 -translate-x-1/2 rounded-full bg-white shadow" />
+            <span className="absolute left-1/2 top-8 h-20 w-7 -translate-x-1/2 rounded-full bg-white shadow" />
+            <span className="absolute left-5 top-12 h-20 w-2 rounded-full bg-white" />
+            <span className="absolute left-4 top-[6.8rem] h-16 w-2.5 rounded-full bg-white" />
+            <span className="absolute left-7 top-[6.8rem] h-16 w-2.5 rounded-full bg-white" />
+          </div>
+
+          <div className="tiq-countdown absolute right-12 top-8 grid h-9 w-9 place-items-center rounded-full bg-[#ff9f00] text-sm font-bold text-[#111111] shadow-lg">3</div>
+          <div className="absolute bottom-4 left-1/2 h-1.5 w-36 -translate-x-1/2 overflow-hidden rounded-full bg-white/20">
+            <span className="tiq-animation-progress block h-full rounded-full bg-[#ff9f00]" />
+          </div>
         </div>
       </div>
 
@@ -250,9 +291,16 @@ function CaptureMethodChoice({ isClientMode, referenceObject, scaleMode, measure
   );
 }
 
-function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmitCustomer, profileOptions = [] }) {
+function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftChange, onSubmitCustomer, profileOptions = [] }) {
   const [draftId] = useState(() => initialDraft?.id || `draft-${Date.now()}-${Math.round(Math.random() * 100000)}`);
-  const [values, setValues] = useState(() => ({ ...initialValues, ...(initialDraft?.values || {}) }));
+  const isClientMode = appMode === "client";
+  const clientIdentityValues = isClientMode
+    ? {
+        fullname: initialDraft?.values?.fullname || currentUser?.fullName || currentUser?.username || "My measurement",
+        phone: initialDraft?.values?.phone || "",
+      }
+    : {};
+  const [values, setValues] = useState(() => ({ ...initialValues, ...clientIdentityValues, ...(initialDraft?.values || {}) }));
   const [error, setError] = useState("");
   const [activeStep, setActiveStep] = useState("info");
   const [referenceMarker, setReferenceMarker] = useState(initialDraft?.referenceMarker || null);
@@ -265,13 +313,13 @@ function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmi
     initialPhotos: initialDraft?.photos,
     referenceObject: values.referenceObject,
     scaleMode: values.scaleMode,
+    cameraFacingMode: captureInputMode === "self-camera" ? "user" : "environment",
     setValues,
     setError,
   });
   const isCameraActive = capture.isCameraActive;
   const needsHeight = values.scaleMode === "height";
   const needsReference = values.scaleMode === "reference";
-  const isClientMode = appMode === "client";
   const needsReferenceSize = values.referenceObject === "measuring-tape";
   const hasCustomerInfo = Boolean(values.fullname.trim());
   const hasScaleAnchor = needsHeight
@@ -293,7 +341,7 @@ function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmi
   const canProcessMeasurement = hasCustomerInfo && hasScaleAnchor && hasPhotos && hasReferenceCalibration && !isProcessing;
   const stepOrder = useMemo(
     () => [
-      { id: "info", label: isClientMode ? "Your info" : "Customer info", done: hasCustomerInfo },
+      ...(!isClientMode ? [{ id: "info", label: "Customer info", done: hasCustomerInfo }] : []),
       { id: "scale", label: "Scale anchor", done: hasScaleAnchor },
       { id: "captureMethod", label: "Photo setup", done: Boolean(captureInputMode) },
       ...(isClientMode && captureInputMode === "self-camera"
@@ -306,16 +354,32 @@ function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmi
     ],
     [activeStep, captureInputMode, hasCustomerInfo, hasPhotos, hasReferenceCalibration, hasScaleAnchor, isClientMode, isProcessing, needsReference],
   );
-  const currentStep = stepOrder.some((step) => step.id === activeStep) ? activeStep : "review";
+  const currentStep = stepOrder.some((step) => step.id === activeStep) ? activeStep : stepOrder[0]?.id || "review";
   const activeStepIndex = Math.max(stepOrder.findIndex((step) => step.id === currentStep), 0);
-  const activeStepContent = stepContent[currentStep] || stepContent.info;
+  const activeStepContent = {
+    ...(stepContent[currentStep] || stepContent.info),
+    ...(isClientMode && currentStep === "scale"
+      ? {
+          eyebrow: "Step 1",
+          title: "Your height and profile",
+          description: "Confirm your gender profile and choose the scale anchor for your measurement.",
+        }
+      : {}),
+  };
   const isFinalStep = currentStep === "review";
   const workflowSteps = stepOrder.map((step) => ({
     ...step,
     active: step.id === currentStep,
   }));
   const completionItems = [
-    { label: hasCustomerInfo ? "Customer ready" : "Customer name needed", done: hasCustomerInfo },
+    {
+      label: isClientMode
+        ? "Profile ready"
+        : hasCustomerInfo
+          ? "Customer ready"
+          : "Customer name needed",
+      done: hasCustomerInfo,
+    },
     { label: hasScaleAnchor ? "Scale ready" : "Scale anchor needed", done: hasScaleAnchor },
     { label: hasFrontPhoto ? "Front view ready" : "Front view needed", done: hasFrontPhoto },
     { label: hasSidePhoto ? "Side view ready" : "Side view needed", done: hasSidePhoto },
@@ -496,6 +560,9 @@ function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmi
     }
 
     setError("");
+    if (currentStep === "clientSetup" && captureInputMode === "self-camera") {
+      unlockSpeechGuidance("Audio guidance enabled. Step back until your whole body fits inside the guide.");
+    }
     setActiveStep(stepOrder[Math.min(activeStepIndex + 1, stepOrder.length - 1)].id);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
@@ -510,6 +577,9 @@ function Form({ appMode = "tailor", initialDraft, onBack, onDraftChange, onSubmi
     setCaptureInputMode(mode);
     setCameraFeedback("");
     setError("");
+    if (mode === "self-camera") {
+      unlockSpeechGuidance("Audio guidance enabled. Set your phone down, then continue when you are ready.");
+    }
     setActiveStep(isClientMode && mode === "self-camera" ? "clientSetup" : "photos");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };

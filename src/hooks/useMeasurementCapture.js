@@ -360,7 +360,7 @@ function revokePhoto(photo) {
   }
 }
 
-export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMode, setValues, setError }) {
+export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMode, cameraFacingMode = "environment", setValues, setError }) {
   const captureSettings = useMemo(
     () => ({ scaleMode, referenceObject }),
     [referenceObject, scaleMode],
@@ -383,6 +383,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   const poseModeRef = useRef("VIDEO");
   const activeCaptureRef = useRef("front");
   const captureSettingsRef = useRef(captureSettings);
+  const cameraFacingModeRef = useRef(cameraFacingMode);
   const photosRef = useRef(emptyPhotos);
 
   const allGuidelinesPassed =
@@ -406,6 +407,10 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   useEffect(() => {
     captureSettingsRef.current = captureSettings;
   }, [captureSettings]);
+
+  useEffect(() => {
+    cameraFacingModeRef.current = cameraFacingMode;
+  }, [cameraFacingMode]);
 
   useEffect(() => {
     photosRef.current = photos;
@@ -509,7 +514,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: "environment" },
+          facingMode: { ideal: cameraFacingModeRef.current },
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },

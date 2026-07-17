@@ -11,6 +11,124 @@
   }
 }
 
+@keyframes setup-stack-pop {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+
+  18%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes self-phone-ready {
+  0%,
+  18% {
+    transform: rotate(-8deg) translateY(10px);
+  }
+
+  28%,
+  70% {
+    transform: rotate(0deg) translateY(0);
+    box-shadow: 0 18px 35px rgb(0 0 0 / 0.45);
+  }
+
+  76%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+    box-shadow: 0 0 24px rgb(255 159 0 / 0.52);
+  }
+}
+
+@keyframes self-person-front {
+  0%,
+  26% {
+    opacity: 0;
+    transform: translateX(-7rem) scale(0.62);
+  }
+
+  46%,
+  68% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  78%,
+  100% {
+    opacity: 0;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes self-person-side {
+  0%,
+  72% {
+    opacity: 0;
+    transform: rotateY(72deg) scale(0.94);
+  }
+
+  82%,
+  100% {
+    opacity: 1;
+    transform: rotateY(0deg) scale(1);
+  }
+}
+
+@keyframes capture-frame-ready {
+  0%,
+  48% {
+    border-color: rgb(255 255 255 / 0.62);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14);
+  }
+
+  58%,
+  100% {
+    border-color: #34d399;
+    box-shadow: 0 0 30px rgb(52 211 153 / 0.48);
+  }
+}
+
+@keyframes countdown-pop {
+  0%,
+  52% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+
+  58%,
+  66%,
+  74% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  62%,
+  70%,
+  78% {
+    transform: scale(1.18);
+  }
+
+  84%,
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+@keyframes animation-progress {
+  from {
+    width: 0%;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
 :root {
   --tiq-icy-blue: #ff9f00;
   --tiq-ruby: #a31621;
@@ -33,9 +151,33 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     background: var(--tiq-platinum);
     color: var(--tiq-black);
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  @media (max-width: 639px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
@@ -214,6 +356,87 @@ html[data-theme="dark"] {
     backdrop-filter: blur(18px);
   }
 
+  .tiq-mobile-auth-card {
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 22% 18%, rgb(255 159 0 / 0.32), transparent 30%),
+      radial-gradient(circle at 86% 20%, rgb(17 17 17 / 0.2), transparent 28%),
+      linear-gradient(145deg, #fff8e1 0%, #f7f4ec 42%, #d9bd78 100%);
+  }
+
+  .tiq-mobile-auth-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background:
+      linear-gradient(rgb(0 0 4 / 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(0 0 4 / 0.07) 1px, transparent 1px),
+      repeating-linear-gradient(90deg, transparent 0 28px, rgb(255 159 0 / 0.22) 28px 30px);
+    background-size: 48px 48px, 48px 48px, 180px 18px;
+    opacity: 0.72;
+    pointer-events: none;
+  }
+
+  .tiq-mobile-auth-card::after {
+    content: "";
+    position: absolute;
+    right: -7rem;
+    top: 2rem;
+    z-index: -1;
+    width: 18rem;
+    aspect-ratio: 1;
+    border: 1px solid rgb(255 159 0 / 0.36);
+    border-radius: 999px;
+    background:
+      conic-gradient(from 210deg, transparent 0deg, rgb(255 159 0 / 0.32) 72deg, transparent 132deg),
+      radial-gradient(circle, transparent 58%, rgb(0 0 4 / 0.12) 59%, transparent 63%);
+    pointer-events: none;
+  }
+
+  .tiq-auth-welcome-card,
+  .tiq-auth-form-hero {
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 20% 18%, rgb(255 159 0 / 0.3), transparent 30%),
+      radial-gradient(circle at 85% 18%, rgb(17 17 17 / 0.28), transparent 26%),
+      linear-gradient(145deg, #fff8e1 0%, #f7f4ec 42%, #d9bd78 100%);
+  }
+
+  .tiq-auth-welcome-card::before,
+  .tiq-auth-form-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background:
+      linear-gradient(rgb(0 0 4 / 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(0 0 4 / 0.07) 1px, transparent 1px),
+      repeating-linear-gradient(90deg, transparent 0 28px, rgb(255 159 0 / 0.22) 28px 30px);
+    background-size: 48px 48px, 48px 48px, 180px 18px;
+    opacity: 0.72;
+    pointer-events: none;
+  }
+
+  .tiq-auth-welcome-card::after,
+  .tiq-auth-form-hero::after {
+    content: "";
+    position: absolute;
+    right: -7rem;
+    top: 2rem;
+    z-index: -1;
+    width: 18rem;
+    aspect-ratio: 1;
+    border: 1px solid rgb(255 159 0 / 0.36);
+    border-radius: 999px;
+    background:
+      conic-gradient(from 210deg, transparent 0deg, rgb(255 159 0 / 0.32) 72deg, transparent 132deg),
+      radial-gradient(circle, transparent 58%, rgb(0 0 4 / 0.12) 59%, transparent 63%);
+    pointer-events: none;
+  }
+
   .tiq-sidebar {
     background: linear-gradient(180deg, #000004 0%, #111111 54%, #2a2412 100%) !important;
     border-color: color-mix(in srgb, var(--tiq-soft-gold) 35%, transparent) !important;
@@ -276,6 +499,75 @@ html[data-theme="dark"] {
     top: 7rem;
     height: clamp(29rem, calc(100vh - 16rem), 37rem);
     max-width: 62%;
+  }
+
+  .tiq-self-capture-animation {
+    perspective: 900px;
+  }
+
+  .tiq-setup-stack {
+    opacity: 0;
+    animation: setup-stack-pop 9s ease-in-out infinite;
+  }
+
+  .tiq-animated-phone {
+    transform-origin: bottom center;
+    animation: self-phone-ready 9s ease-in-out infinite;
+  }
+
+  .tiq-step-path,
+  .tiq-step-label {
+    opacity: 0;
+    animation: setup-stack-pop 9s ease-in-out infinite;
+    animation-delay: 1.2s;
+  }
+
+  .tiq-capture-frame {
+    animation: capture-frame-ready 9s ease-in-out infinite;
+  }
+
+  .tiq-self-person {
+    transform-origin: bottom center;
+    animation: self-person-front 9s ease-in-out infinite;
+  }
+
+  .tiq-side-person {
+    transform-origin: bottom center;
+    animation: self-person-side 9s ease-in-out infinite;
+  }
+
+  .tiq-countdown {
+    animation: countdown-pop 9s ease-in-out infinite;
+  }
+
+  .tiq-animation-progress {
+    animation: animation-progress 9s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tiq-setup-stack,
+    .tiq-animated-phone,
+    .tiq-step-path,
+    .tiq-step-label,
+    .tiq-capture-frame,
+    .tiq-self-person,
+    .tiq-side-person,
+    .tiq-countdown,
+    .tiq-animation-progress {
+      animation: none !important;
+    }
+
+    .tiq-setup-stack,
+    .tiq-step-path,
+    .tiq-step-label,
+    .tiq-self-person {
+      opacity: 1;
+    }
+
+    .tiq-side-person,
+    .tiq-countdown {
+      opacity: 0;
+    }
   }
 
   @media (min-width: 640px) {
@@ -437,6 +729,95 @@ html[data-theme="dark"] {
     input::placeholder,
     textarea::placeholder {
       color: #8fa2bd;
+    }
+
+    .tiq-auth-page {
+      color: #111111 !important;
+      background:
+        radial-gradient(circle at 18% 18%, rgb(255 159 0 / 0.24), transparent 28%),
+        radial-gradient(circle at 88% 12%, rgb(17 17 17 / 0.16), transparent 24%),
+        linear-gradient(135deg, #fff8e1 0%, #f7f4ec 42%, #f1e0b5 100%) !important;
+    }
+
+    .tiq-auth-page::before {
+      background:
+        linear-gradient(rgb(0 0 4 / 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(0 0 4 / 0.06) 1px, transparent 1px),
+        repeating-linear-gradient(90deg, transparent 0 28px, rgb(255 159 0 / 0.18) 28px 30px);
+      opacity: 0.72;
+    }
+
+    .tiq-auth-page::after {
+      border-color: rgb(255 159 0 / 0.28);
+      background:
+        conic-gradient(from 210deg, transparent 0deg, rgb(255 159 0 / 0.28) 72deg, transparent 132deg),
+        radial-gradient(circle, transparent 58%, rgb(0 0 4 / 0.1) 59%, transparent 63%);
+      opacity: 0.88;
+    }
+
+    .tiq-auth-card {
+      border-color: rgb(255 255 255 / 0.82) !important;
+      background: rgb(255 255 255 / 0.9) !important;
+    }
+
+    .tiq-auth-page .bg-white,
+    .tiq-auth-page .bg-white\/80,
+    .tiq-auth-page .bg-white\/95 {
+      background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1)) !important;
+    }
+
+    .tiq-auth-page .bg-stone-100 {
+      background-color: #f5f5f4 !important;
+    }
+
+    .tiq-auth-page .border-stone-200,
+    .tiq-auth-page .border-stone-300 {
+      border-color: #d6d3d1 !important;
+    }
+
+    .tiq-auth-page .text-stone-500 {
+      color: #78716c !important;
+    }
+
+    .tiq-auth-page .text-stone-600,
+    .tiq-auth-page .text-stone-700,
+    .tiq-auth-page .text-stone-800,
+    .tiq-auth-page .text-stone-900,
+    .tiq-auth-page .text-stone-950 {
+      color: #111111 !important;
+    }
+
+    .tiq-auth-page input {
+      color: #111111 !important;
+      background-color: #ffffff !important;
+    }
+
+    .tiq-auth-page input::placeholder {
+      color: #78716c !important;
+    }
+
+    .tiq-auth-page .tiq-primary-action {
+      background-color: transparent !important;
+      border-color: #111111 !important;
+      color: #111111 !important;
+    }
+
+    .tiq-auth-page .tiq-primary-action:hover {
+      background-color: #111111 !important;
+      border-color: #111111 !important;
+      color: #ffffff !important;
+    }
+
+    .tiq-auth-welcome-card,
+    .tiq-auth-form-hero {
+      background: transparent !important;
+    }
+
+    .tiq-mobile-auth-card {
+      background:
+        radial-gradient(circle at 22% 18%, rgb(255 159 0 / 0.32), transparent 30%),
+        radial-gradient(circle at 86% 20%, rgb(17 17 17 / 0.2), transparent 28%),
+        linear-gradient(145deg, #fff8e1 0%, #f7f4ec 42%, #d9bd78 100%) !important;
     }
   }
 }

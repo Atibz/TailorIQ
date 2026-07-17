@@ -57,6 +57,7 @@ function GuidedCapturePanel({
       }
 
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume?.();
       const utterance = new SpeechSynthesisUtterance(instruction);
       utterance.rate = 0.95;
       utterance.pitch = 1;
@@ -85,6 +86,7 @@ function GuidedCapturePanel({
       }
 
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume?.();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
