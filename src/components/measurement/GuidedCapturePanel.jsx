@@ -77,7 +77,8 @@ function GuidedCapturePanel({
       return undefined;
     }
 
-    let remaining = 5;
+    const selfCaptureCountdownSeconds = 8;
+    let remaining = selfCaptureCountdownSeconds;
     const startTimer = window.setTimeout(() => setCountdown(remaining), 0);
 
     const speak = (text) => {
@@ -94,8 +95,8 @@ function GuidedCapturePanel({
 
     speak(
       activeCapture === "front"
-        ? "Front photo ready. Hold your pose. Capturing in 5 seconds."
-        : "Side photo ready. Hold your side pose. Capturing in 5 seconds.",
+        ? `Front photo ready. Hold your pose. Capturing in ${selfCaptureCountdownSeconds} seconds.`
+        : `Side photo ready. Hold your side pose. Capturing in ${selfCaptureCountdownSeconds} seconds.`,
     );
 
     const countdownTimer = window.setInterval(() => {
@@ -135,7 +136,7 @@ function GuidedCapturePanel({
       <div className="fixed inset-0 z-50 overflow-hidden bg-black text-white">
         <video
           ref={videoRef}
-          className={`h-full w-full object-cover transition-opacity ${isCameraActive ? "opacity-100" : "opacity-0"}`}
+          className={`h-full w-full object-contain transition-opacity ${isCameraActive ? "opacity-100" : "opacity-0"}`}
           autoPlay
           muted
           playsInline
@@ -223,7 +224,7 @@ function GuidedCapturePanel({
           >
             {isReadyToCapture
               ? isSelfCapture
-                ? `Hold still. Capturing in ${countdown ?? 5}.`
+                ? `Hold still. Capturing in ${countdown ?? 8}.`
                 : "Good. Hold still."
               : isCameraActive
                 ? poseMessage

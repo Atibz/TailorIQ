@@ -878,13 +878,28 @@ function readBody(request) {
 }
 
 const server = http.createServer(async (request, response) => {
+  const requestPath = new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
+  const measurementPaths = new Set(["/", "/measure", "/measurements/segment"]);
+
   if (request.method === "OPTIONS") {
     sendJson(response, 204, {});
     return;
   }
 
-  if (request.method !== "POST" || request.url !== "/measurements/segment") {
-    sendJson(response, 404, { error: "Not found" });
+  if (request.method === "GET" && (requestPath === "/" || requestPath === "/health")) {
+    sendJson(response, 200, {
+      ok: true,
+      service: "TailorIQ segmentation backend",
+      endpoint: "/measurements/segment",
+    });
+    return;
+  }
+
+  if (request.method !== "POST" || !measurementPaths.has(requestPath)) {
+    sendJson(response, 404, {
+      error: "Not found",
+      expected: "POST /measurements/segment",
+    });
     return;
   }
 

@@ -356,16 +356,20 @@ function TailorIQMark({ className = "h-14 w-14" }) {
   );
 }
 
-function TailorIQWordmark({ compact = false, light = false }) {
+function TailorIQWordmark({ compact = false, light = false, large = false }) {
+  const markClass = compact ? "h-10 w-10 shrink-0" : large ? "h-24 w-24 shrink-0" : "h-14 w-14 shrink-0";
+  const brandTextClass = compact ? "text-xl" : large ? "text-6xl" : "text-3xl";
+  const taglineClass = large ? "mt-3 text-sm tracking-[0.42em]" : "mt-1 text-xs tracking-[0.32em]";
+
   return (
-    <div className="flex items-center gap-3">
-      <TailorIQMark className={compact ? "h-10 w-10 shrink-0" : "h-14 w-14 shrink-0"} />
+    <div className={`flex items-center ${large ? "gap-5" : "gap-3"}`}>
+      <TailorIQMark className={markClass} />
       <div>
-        <p className={`${compact ? "text-xl" : "text-3xl"} font-bold tracking-tight ${light ? "text-white" : "text-stone-950"}`}>
+        <p className={`${brandTextClass} font-bold tracking-tight ${light ? "text-white" : "text-stone-950"}`}>
           Tailor<span className="text-[#ff9f00]">IQ</span>
         </p>
         {!compact && (
-          <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.32em] ${light ? "text-white/65" : "text-stone-500"}`}>
+          <p className={`${taglineClass} font-semibold uppercase ${light ? "text-white/65" : "text-stone-500"}`}>
             Measure smart. Fit perfect.
           </p>
         )}
@@ -668,14 +672,8 @@ function AuthPage({ onLogin, onSignup }) {
       </section>
 
       <section className="mx-auto hidden min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-8 md:grid lg:grid-cols-[1fr_0.9fr]">
-        <div className="tiq-auth-hero">
-          <TailorIQWordmark />
-          <h1 className="mt-4 max-w-xl text-4xl font-semibold leading-tight text-stone-950 sm:text-5xl">
-            Turn guided photos into tailor-ready measurements.
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600">
-            TailorIQ helps clients capture clean front and side photos, creates editable measurement results, and keeps tailors organized from draft to fitting.
-          </p>
+        <div className="tiq-auth-hero flex min-h-[28rem] items-center justify-center">
+          <TailorIQWordmark large />
         </div>
 
         <form onSubmit={handleSubmit} className="tiq-auth-card rounded-xl border p-5 shadow-xl sm:p-6">
@@ -784,25 +782,37 @@ function ModeOnboarding({ currentUser, onLogout, onSelectMode, theme, onToggleTh
   return (
     <main className="min-h-screen bg-stone-100 px-4 py-8 text-stone-900 sm:px-6">
       <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl flex-col justify-center">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <p className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-stone-700 shadow-sm">
-            @{currentUser?.username}
-          </p>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="min-h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
-          >
-            Logout
-          </button>
-          <ThemeSwitch theme={theme} onToggle={onToggleTheme} compact />
-        </div>
         <div className="max-w-2xl">
           <TailorIQWordmark />
           <h1 className="mt-3 text-3xl font-semibold text-stone-950 sm:text-4xl">Choose how you want to use the app</h1>
           <p className="mt-3 text-stone-600">
             Tailor mode is for managing customer records. Client mode is for measuring yourself privately and sharing the result with a tailor.
           </p>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 rounded-xl border border-stone-200 bg-white/90 p-4 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#111111] text-sm font-bold text-[#ff9f00]">
+              {(currentUser?.fullName || currentUser?.username || "U").trim().charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-stone-950">
+                {currentUser?.fullName || "Signed in"}
+              </p>
+              <p className="truncate text-xs font-medium text-stone-500">@{currentUser?.username}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <ThemeSwitch theme={theme} onToggle={onToggleTheme} compact />
+            <button
+              type="button"
+              onClick={onLogout}
+              className="min-h-10 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
