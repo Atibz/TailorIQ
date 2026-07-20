@@ -2486,7 +2486,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
   const [selectedMeasurementIndex, setSelectedMeasurementIndex] = useState(0);
   const [tailorUsername, setTailorUsername] = useState("");
   const [includePhotos, setIncludePhotos] = useState(false);
-  const [photoPreviewMode, setPhotoPreviewMode] = useState("silhouette");
+  const [photoPreviewMode, setPhotoPreviewMode] = useState("original");
 
   if (!customer) {
     return null;
@@ -2803,8 +2803,8 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
             {hasPhotoSilhouettes && (
               <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
                 {[
-                  { id: "silhouette", label: "Silhouette" },
                   { id: "original", label: "Original" },
+                  { id: "silhouette", label: "Silhouette" },
                 ].map((mode) => (
                   <button
                     key={mode.id}
@@ -2827,7 +2827,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
               return (
                 <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
                   <div className="relative">
-                    <img src={displayPreview} alt={`${photo.view} preview`} className="h-64 w-full object-cover object-top" />
+                    <img src={displayPreview} alt={`${photo.view} preview`} className="h-64 w-full bg-stone-950 object-contain" />
                     {photoPreviewMode === "silhouette" && photo.silhouette && (
                       <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
                         Privacy silhouette

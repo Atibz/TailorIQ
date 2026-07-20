@@ -20,8 +20,8 @@ function CapturePreviewCards({ photos, onRetake }) {
           </div>
           {photos[view]?.preview ? (
             <img
-              className="mt-3 aspect-video w-full rounded-md object-cover"
-              src={photos[view].silhouettePreview || photos[view].preview}
+              className="mt-3 aspect-video w-full rounded-md bg-stone-950 object-contain"
+              src={photos[view].preview}
               alt={`${label} capture`}
             />
           ) : (
