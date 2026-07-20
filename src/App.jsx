@@ -2066,7 +2066,7 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
         </div>
         <div>
           <p className="mb-2 text-xs font-semibold uppercase text-stone-500">Edit in</p>
-          <div className="grid grid-cols-2 overflow-hidden rounded-full border border-stone-300 bg-white p-0.5">
+          <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
             {[
               { id: "in", label: "Inches" },
               { id: "cm", label: "cm" },
@@ -2094,7 +2094,7 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
                   setUnit(nextUnit);
                 }}
                 className={`min-h-8 rounded-full px-2.5 text-xs font-semibold transition ${
-                  unit === unitOption.id ? "bg-amber-500 text-stone-950" : "text-stone-700 hover:bg-stone-100"
+                  unit === unitOption.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
                 }`}
               >
                 {unitOption.label}
@@ -2441,6 +2441,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
   const [selectedMeasurementIndex, setSelectedMeasurementIndex] = useState(0);
   const [tailorUsername, setTailorUsername] = useState("");
   const [includePhotos, setIncludePhotos] = useState(false);
+  const [photoPreviewMode, setPhotoPreviewMode] = useState("silhouette");
 
   if (!customer) {
     return null;
@@ -2457,14 +2458,17 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
     {
       view: "Front view",
       preview: customer.photoPreviews?.front,
+      silhouette: customer.photoSilhouettes?.front,
       fileName: customer.photoViews?.find((photo) => photo.view === "Front view")?.fileName,
     },
     {
       view: "Side view",
       preview: customer.photoPreviews?.side,
+      silhouette: customer.photoSilhouettes?.side,
       fileName: customer.photoViews?.find((photo) => photo.view === "Side view")?.fileName,
     },
   ].filter((photo) => Boolean(photo.preview));
+  const hasPhotoSilhouettes = availablePhotoViews.some((photo) => Boolean(photo.silhouette));
   const groupedMeasurements = customer.measurements.reduce((groups, measurement) => {
     const group = measurement.group || getProfileLabel(customer.measurementProfile);
 
@@ -2667,7 +2671,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
           <p className="mt-1 text-sm text-stone-500">View the result visually or as a practical tailor list.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-[auto_auto]">
-          <div className="grid grid-cols-2 overflow-hidden rounded-full border border-stone-300 bg-white p-0.5">
+          <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
             {[
               { id: "guide", label: "Body guide" },
               { id: "list", label: "List" },
@@ -2676,8 +2680,8 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
                 key={view.id}
                 type="button"
                 onClick={() => setResultView(view.id)}
-                className={`min-h-10 rounded px-3 text-sm font-semibold transition ${
-                  resultView === view.id ? "bg-stone-950 text-white" : "text-stone-700 hover:bg-stone-100"
+                className={`min-h-10 rounded-full px-3 text-sm font-semibold transition ${
+                  resultView === view.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
                 }`}
               >
                 {view.label}
@@ -2685,7 +2689,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
             ))}
           </div>
           {resultView === "list" && (
-            <div className="grid grid-cols-2 overflow-hidden rounded-md border border-stone-300 bg-white p-1">
+            <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
               {[
                 { id: "cm", label: "cm" },
                 { id: "in", label: "inches" },
@@ -2695,7 +2699,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
                   type="button"
                   onClick={() => setResultUnit(unit.id)}
                   className={`min-h-8 rounded-full px-2.5 text-xs font-semibold transition ${
-                    resultUnit === unit.id ? "bg-amber-500 text-stone-950" : "text-stone-700 hover:bg-stone-100"
+                    resultUnit === unit.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
                   }`}
                 >
                   {unit.label}
@@ -2746,17 +2750,52 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
 
       {availablePhotoViews.length > 0 && (
         <div className="mt-5 rounded-lg border border-stone-200 p-4">
-          <p className="text-sm font-semibold text-stone-950">Uploaded photos</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {availablePhotoViews.map((photo) => (
-              <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
-                <img src={photo.preview} alt={`${photo.view} preview`} className="h-64 w-full object-cover object-top" />
-                <div className="p-3">
-                <p className="text-sm font-medium text-stone-900">{photo.view}</p>
-                  {photo.fileName && <p className="mt-1 break-words text-sm text-stone-500">{photo.fileName}</p>}
-                </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-stone-950">Photo previews</p>
+              <p className="mt-1 text-sm text-stone-500">Silhouette mode hides the original background, clothing details, and face details.</p>
+            </div>
+            {hasPhotoSilhouettes && (
+              <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
+                {[
+                  { id: "silhouette", label: "Silhouette" },
+                  { id: "original", label: "Original" },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setPhotoPreviewMode(mode.id)}
+                    className={`min-h-8 rounded-full px-3 text-xs font-semibold transition ${
+                      photoPreviewMode === mode.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {availablePhotoViews.map((photo) => {
+              const displayPreview = photoPreviewMode === "silhouette" ? photo.silhouette || photo.preview : photo.preview;
+
+              return (
+                <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
+                  <div className="relative">
+                    <img src={displayPreview} alt={`${photo.view} preview`} className="h-64 w-full object-cover object-top" />
+                    {photoPreviewMode === "silhouette" && photo.silhouette && (
+                      <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                        Privacy silhouette
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                  <p className="text-sm font-medium text-stone-900">{photo.view}</p>
+                    {photo.fileName && <p className="mt-1 break-words text-sm text-stone-500">{photo.fileName}</p>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

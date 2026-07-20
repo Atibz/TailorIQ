@@ -39,6 +39,20 @@ function getSleeveRatio(leftSleeve, rightSleeve, bodyHeight) {
   return sleeveLength / bodyHeight;
 }
 
+function roundLandmarkValue(value) {
+  return Number.isFinite(value) ? Number(value.toFixed(5)) : 0;
+}
+
+function compactLandmarks(landmarks) {
+  return landmarks.map((landmark) => ({
+    x: roundLandmarkValue(landmark.x),
+    y: roundLandmarkValue(landmark.y),
+    z: roundLandmarkValue(landmark.z),
+    visibility: roundLandmarkValue(landmark.visibility ?? 0),
+    presence: roundLandmarkValue(landmark.presence ?? 0),
+  }));
+}
+
 function extractPoseMetrics(landmarks, frameMetrics) {
   if (!landmarks?.length) {
     return null;
@@ -73,6 +87,8 @@ function extractPoseMetrics(landmarks, frameMetrics) {
   const bodyCenterX = (shoulderCenter.x + hipCenter.x) / 2;
 
   return {
+    landmarkSource: "mediapipe-pose-landmarker-lite",
+    landmarks: compactLandmarks(landmarks),
     bodyHeightRatio: bodyHeight,
     shoulderWidthRatio: Math.abs(rightShoulder.x - leftShoulder.x) / bodyHeight,
     hipWidthRatio: Math.abs(rightHip.x - leftHip.x) / bodyHeight,
@@ -167,6 +183,83 @@ function createPreviewFromImageSource(source, maxSize = 900, quality = 0.72) {
   canvas.getContext("2d").drawImage(source, 0, 0, width, height);
 
   return canvas.toDataURL("image/jpeg", quality);
+}
+
+function getPoseBounds(poseMetrics) {
+  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
+  const visibleLandmarks = landmarks.filter((landmark) => Number(landmark.visibility) >= 0.25);
+
+  if (visibleLandmarks.length === 0) {
+    return null;
+  }
+
+  const minX = Math.min(...visibleLandmarks.map((landmark) => landmark.x));
+  const maxX = Math.max(...visibleLandmarks.map((landmark) => landmark.x));
+  const minY = Math.min(...visibleLandmarks.map((landmark) => landmark.y));
+  const maxY = Math.max(...visibleLandmarks.map((landmark) => landmark.y));
+
+  return {
+    minX: Math.max(minX - 0.12, 0),
+    maxX: Math.min(maxX + 0.12, 1),
+    minY: Math.max(minY - 0.08, 0),
+    maxY: Math.min(maxY + 0.08, 1),
+  };
+}
+
+function createSilhouettePreviewFromImageSource(source, poseMetrics, maxSize = 900) {
+  const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
+  const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
+  const scale = Math.min(maxSize / sourceWidth, maxSize / sourceHeight, 1);
+  const width = Math.max(Math.round(sourceWidth * scale), 1);
+  const height = Math.max(Math.round(sourceHeight * scale), 1);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(source, 0, 0, width, height);
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const sampleBackground = (x, y) => {
+    const index = (Math.min(Math.max(y, 0), height - 1) * width + Math.min(Math.max(x, 0), width - 1)) * 4;
+    return [data[index], data[index + 1], data[index + 2]];
+  };
+  const corners = [
+    sampleBackground(0, 0),
+    sampleBackground(width - 1, 0),
+    sampleBackground(0, height - 1),
+    sampleBackground(width - 1, height - 1),
+  ];
+  const background = [0, 1, 2].map((channel) =>
+    corners.reduce((sum, color) => sum + color[channel], 0) / corners.length,
+  );
+
+  const output = context.createImageData(width, height);
+  const poseBounds = getPoseBounds(poseMetrics);
+
+  for (let index = 0; index < data.length; index += 4) {
+    const pixel = index / 4;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    const inPoseBounds = !poseBounds || (
+      x / width >= poseBounds.minX &&
+      x / width <= poseBounds.maxX &&
+      y / height >= poseBounds.minY &&
+      y / height <= poseBounds.maxY
+    );
+    const distance = Math.hypot(data[index] - background[0], data[index + 1] - background[1], data[index + 2] - background[2]);
+    const foreground = inPoseBounds && distance > 34;
+
+    output.data[index] = foreground ? 17 : 246;
+    output.data[index + 1] = foreground ? 17 : 244;
+    output.data[index + 2] = foreground ? 17 : 236;
+    output.data[index + 3] = 255;
+  }
+
+  context.putImageData(output, 0, 0);
+
+  return canvas.toDataURL("image/png");
 }
 
 function createImageFromFile(file) {
@@ -267,6 +360,7 @@ function analyzePose(landmarks, frameMetrics, options = {}) {
       bottomY < (view === "side" ? 1.08 : 1.03) &&
       leftX > (view === "side" ? -0.08 : -0.03) &&
       rightX < (view === "side" ? 1.08 : 1.03),
+    bodyFit: view === "side" ? bodyHeight > 0.42 && bodyHeight < 0.95 : bodyHeight > 0.5 && bodyHeight < 0.92,
     centered: view === "side" ? centerX > 0.32 && centerX < 0.68 : centerX > 0.38 && centerX < 0.62,
     upright: view === "side" ? shoulderTilt < 0.11 && hipTilt < 0.12 : shoulderTilt < 0.065 && hipTilt < 0.075,
     armsClear: view === "side" ? sideArmsClear : frontArmsClear,
@@ -515,8 +609,9 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: cameraFacingModeRef.current },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1080 },
+          height: { ideal: 1920 },
+          aspectRatio: { ideal: 9 / 16 },
         },
         audio: false,
       });
@@ -582,7 +677,9 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       return;
     }
 
+    const poseMetrics = latestPoseMetricsRef.current;
     const preview = createPreviewFromImageSource(videoRef.current);
+    const silhouettePreview = createSilhouettePreviewFromImageSource(videoRef.current, poseMetrics);
 
     setPhotos((currentPhotos) => ({
       ...currentPhotos,
@@ -590,7 +687,8 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
           view: captureLabels[activeCaptureRef.current],
           fileName: `${captureLabels[activeCaptureRef.current]} MediaPipe capture`,
           preview,
-          poseMetrics: latestPoseMetricsRef.current,
+          silhouettePreview,
+          poseMetrics,
         },
     }));
 
@@ -625,6 +723,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       const frameMetrics = preprocessImageSource(image);
       const result = poseLandmarker.detect(image);
       const landmarks = result.landmarks?.[0];
+      const poseMetrics = extractPoseMetrics(landmarks, frameMetrics);
       const analysis = analyzePose(landmarks, frameMetrics, {
         ...captureSettingsRef.current,
         view,
@@ -649,7 +748,8 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
             view: captureLabels[view],
             fileName: `${captureLabels[view]} uploaded photo`,
             preview: createPreviewFromImageSource(image),
-            poseMetrics: extractPoseMetrics(landmarks, frameMetrics),
+            silhouettePreview: createSilhouettePreviewFromImageSource(image, poseMetrics),
+            poseMetrics,
           },
         };
       });

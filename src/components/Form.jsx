@@ -243,30 +243,70 @@ function SelfCaptureSetup() {
 }
 
 function ClientPhotoReview({ photos, onRetake }) {
+  const [previewMode, setPreviewMode] = useState("silhouette");
+  const hasSilhouette = Boolean(photos.front?.silhouettePreview || photos.side?.silhouettePreview);
+
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        {Object.entries({ front: "Front photo", side: "Side photo" }).map(([view, label]) => (
-          <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-            <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
-              <p className="text-sm font-semibold text-stone-950">{label}</p>
-              <button
-                type="button"
-                onClick={() => onRetake(view)}
-                className="rounded-md border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-              >
-                Retake
-              </button>
-            </div>
-            {photos[view]?.preview ? (
-              <img className="aspect-[3/4] w-full object-cover" src={photos[view].preview} alt={`${label} preview`} />
-            ) : (
-              <div className="flex min-h-64 items-center justify-center bg-stone-50 px-4 text-center text-sm text-stone-500">
-                No {label.toLowerCase()} yet.
-              </div>
-            )}
+      {hasSilhouette && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
+          <div>
+            <p className="text-sm font-semibold text-stone-950">Privacy preview</p>
+            <p className="mt-1 text-xs text-stone-500">Use silhouettes unless you need to inspect the original photos.</p>
           </div>
-        ))}
+          <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
+            {[
+              { id: "silhouette", label: "Silhouette" },
+              { id: "original", label: "Original" },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setPreviewMode(mode.id)}
+                className={`min-h-8 rounded-full px-3 text-xs font-semibold transition ${
+                  previewMode === mode.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {Object.entries({ front: "Front photo", side: "Side photo" }).map(([view, label]) => {
+          const photo = photos[view];
+          const preview = previewMode === "silhouette" ? photo?.silhouettePreview || photo?.preview : photo?.preview;
+
+          return (
+            <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-950">{label}</p>
+                <button
+                  type="button"
+                  onClick={() => onRetake(view)}
+                  className="rounded-md border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  Retake
+                </button>
+              </div>
+              {preview ? (
+                <div className="relative">
+                  <img className="aspect-[3/4] w-full object-cover" src={preview} alt={`${label} preview`} />
+                  {previewMode === "silhouette" && photo?.silhouettePreview && (
+                    <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                      Privacy silhouette
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-64 items-center justify-center bg-stone-50 px-4 text-center text-sm text-stone-500">
+                  No {label.toLowerCase()} yet.
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
         Continue only if your head, feet, and full body shape are visible in both photos.
@@ -530,6 +570,14 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
           front: capture.photos.front?.preview,
           side: capture.photos.side?.preview,
         },
+        photoPreviews: {
+          front: capture.photos.front?.preview,
+          side: capture.photos.side?.preview,
+        },
+        photoSilhouettes: {
+          front: capture.photos.front?.silhouettePreview,
+          side: capture.photos.side?.silhouettePreview,
+        },
         captureMethod: captureInputMode === "upload"
           ? "Uploaded photos"
           : captureInputMode === "self-camera"
@@ -621,6 +669,14 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setError("");
     if (mode === "self-camera") {
       unlockSpeechGuidance("Audio guidance enabled. Set your phone down, then continue when you are ready.");
+
+      if (typeof window !== "undefined") {
+        const orientationPermission = window.DeviceOrientationEvent?.requestPermission?.();
+        const motionPermission = window.DeviceMotionEvent?.requestPermission?.();
+
+        orientationPermission?.catch(() => {});
+        motionPermission?.catch(() => {});
+      }
     }
     setActiveStep(isClientMode && mode === "self-camera" ? "clientSetup" : "photos");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });

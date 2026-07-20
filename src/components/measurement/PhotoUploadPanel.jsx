@@ -49,11 +49,18 @@ function PhotoUploadPanel({ photos, uploadStatus, onRetake, onUploadPhoto }) {
 
               <label className="block cursor-pointer">
                 {photo?.preview ? (
-                  <img
-                    className="aspect-[4/3] w-full object-cover"
-                    src={photo.preview}
-                    alt={`${label} upload preview`}
-                  />
+                  <div className="relative">
+                    <img
+                      className="aspect-[4/3] w-full object-cover"
+                      src={photo.silhouettePreview || photo.preview}
+                      alt={`${label} upload preview`}
+                    />
+                    {photo.silhouettePreview && (
+                      <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                        Privacy silhouette
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex min-h-56 flex-col items-center justify-center px-4 py-8 text-center transition hover:bg-amber-50">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">

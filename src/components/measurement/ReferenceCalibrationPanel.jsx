@@ -54,12 +54,12 @@ function ReferenceCalibrationPanel({
             Mark the top and bottom of the {reference?.label || "reference object"} in the front photo.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
           <button
             type="button"
             onClick={() => setActivePoint("top")}
-            className={`min-h-9 rounded-md px-3 text-xs font-semibold transition ${
-              activePoint === "top" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-100"
+            className={`min-h-9 rounded-full px-3 text-xs font-semibold transition ${
+              activePoint === "top" ? "tiq-segmented-button-active" : "tiq-segmented-button"
             }`}
           >
             Top
@@ -67,8 +67,8 @@ function ReferenceCalibrationPanel({
           <button
             type="button"
             onClick={() => setActivePoint("bottom")}
-            className={`min-h-9 rounded-md px-3 text-xs font-semibold transition ${
-              activePoint === "bottom" ? "bg-stone-950 text-white" : "bg-white text-stone-700 hover:bg-stone-100"
+            className={`min-h-9 rounded-full px-3 text-xs font-semibold transition ${
+              activePoint === "bottom" ? "tiq-segmented-button-active" : "tiq-segmented-button"
             }`}
           >
             Bottom

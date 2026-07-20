@@ -375,6 +375,104 @@ function buildForegroundMask(raster) {
   return mask;
 }
 
+function getBodyComponentMask(mask, width, height, { centerX = 0.5, topY = 0.04, bottomY = 0.96 } = {}) {
+  const visited = new Uint8Array(mask.length);
+  const bodyCenterPixel = clampValue(centerX, 0, 1) * width;
+  const bodyTopPixel = clampValue(topY, 0, 1) * height;
+  const bodyBottomPixel = clampValue(bottomY, 0, 1) * height;
+  const minimumArea = Math.max(Math.round(width * height * 0.001), 12);
+  const components = [];
+
+  for (let startIndex = 0; startIndex < mask.length; startIndex += 1) {
+    if (mask[startIndex] !== 1 || visited[startIndex]) {
+      continue;
+    }
+
+    const stack = [startIndex];
+    const pixels = [];
+    let minX = width;
+    let maxX = 0;
+    let minY = height;
+    let maxY = 0;
+
+    visited[startIndex] = 1;
+
+    while (stack.length > 0) {
+      const index = stack.pop();
+      const x = index % width;
+      const y = Math.floor(index / width);
+
+      pixels.push(index);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+
+      const neighbors = [
+        x > 0 ? index - 1 : -1,
+        x < width - 1 ? index + 1 : -1,
+        y > 0 ? index - width : -1,
+        y < height - 1 ? index + width : -1,
+      ];
+
+      neighbors.forEach((neighbor) => {
+        if (neighbor >= 0 && mask[neighbor] === 1 && !visited[neighbor]) {
+          visited[neighbor] = 1;
+          stack.push(neighbor);
+        }
+      });
+    }
+
+    if (pixels.length < minimumArea) {
+      continue;
+    }
+
+    const centerDistance = Math.abs((minX + maxX) / 2 - bodyCenterPixel) / width;
+    const centerBonus = bodyCenterPixel >= minX - width * 0.1 && bodyCenterPixel <= maxX + width * 0.1 ? 1.8 : 1;
+    const overlapTop = Math.max(minY, bodyTopPixel);
+    const overlapBottom = Math.min(maxY, bodyBottomPixel);
+    const overlapRatio = Math.max(overlapBottom - overlapTop, 0) / Math.max(maxY - minY, 1);
+    const score = pixels.length * centerBonus * Math.max(overlapRatio, 0.35) * (1 - Math.min(centerDistance, 0.8) * 0.55);
+
+    components.push({
+      pixels,
+      area: pixels.length,
+      box: { minX, maxX, minY, maxY },
+      score,
+    });
+  }
+
+  if (components.length === 0) {
+    return {
+      mask,
+      metadata: {
+        componentCount: 0,
+        selectedArea: 0,
+        retainedRatio: 1,
+        cleanupApplied: false,
+      },
+    };
+  }
+
+  const selected = components.sort((first, second) => second.score - first.score)[0];
+  const cleanedMask = new Uint8Array(mask.length);
+
+  selected.pixels.forEach((index) => {
+    cleanedMask[index] = 1;
+  });
+
+  return {
+    mask: cleanedMask,
+    metadata: {
+      componentCount: components.length,
+      selectedArea: selected.area,
+      retainedRatio: Number((selected.area / Math.max(mask.reduce((sum, value) => sum + value, 0), 1)).toFixed(3)),
+      cleanupApplied: components.length > 1,
+      selectedBox: selected.box,
+    },
+  };
+}
+
 function findSpanAtRow(mask, width, height, row, centerX) {
   const y = clampValue(Math.round(row), 0, height - 1);
   const spans = [];
@@ -503,6 +601,101 @@ function getCenterX(metrics) {
   return Number.isFinite(value) ? clampValue(value, 0.18, 0.82) : 0.5;
 }
 
+function getFrameWarnings(metrics, label) {
+  const warnings = [];
+  const frame = metrics?.frameMetrics;
+
+  if (!frame) {
+    warnings.push(`${label} image quality data is missing. Retake the photo if the result looks unreliable.`);
+    return warnings;
+  }
+
+  if (frame.brightness < 50) {
+    warnings.push(`${label} photo looks too dark. Use brighter, even lighting for better body outline detection.`);
+  } else if (frame.brightness > 225) {
+    warnings.push(`${label} photo looks overexposed. Reduce harsh light so the body outline stays visible.`);
+  }
+
+  if (frame.contrast < 16) {
+    warnings.push(`${label} photo has low contrast. Use a plainer background or clothing that separates from the background.`);
+  }
+
+  if (frame.sharpness < 4) {
+    warnings.push(`${label} photo may be blurry. Hold the camera steady or retake before measuring.`);
+  }
+
+  return warnings;
+}
+
+function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
+  const bodyHeightRatio = metrics?.bodyHeightRatio;
+
+  if (!Number.isFinite(bodyHeightRatio)) {
+    return [`${label} body-fit data is missing. The person may not have been fully detected.`];
+  }
+
+  if (bodyHeightRatio < minimum) {
+    return [`${label} person is too small in the frame. Move the camera closer while keeping head and feet visible.`];
+  }
+
+  if (bodyHeightRatio > maximum) {
+    return [`${label} person is too close to the camera. Move the camera back so the full body fits comfortably.`];
+  }
+
+  return [];
+}
+
+function getLandmarkSummary(metrics) {
+  const landmarks = Array.isArray(metrics?.landmarks) ? metrics.landmarks : [];
+  const visibleCount = landmarks.filter((landmark) => Number(landmark.visibility) >= 0.35).length;
+
+  return {
+    source: metrics?.landmarkSource || "unknown",
+    count: landmarks.length,
+    visibleCount,
+    hasExpectedLandmarks: landmarks.length >= 33,
+  };
+}
+
+function validateCapturePayload(payload) {
+  const frontPose = payload.poseMetrics?.front;
+  const sidePose = payload.poseMetrics?.side;
+  const errors = [];
+  const warnings = [];
+
+  if (!frontPose?.silhouetteLevels) {
+    errors.push("Front view pose data is missing. Retake or re-upload the front photo with the guided checks active.");
+  }
+
+  if (!sidePose?.silhouetteLevels) {
+    errors.push("Side view pose data is missing. Retake or re-upload the side photo with the guided checks active.");
+  }
+
+  if (errors.length > 0) {
+    return { errors, warnings };
+  }
+
+  warnings.push(
+    ...getFrameWarnings(frontPose, "Front view"),
+    ...getFrameWarnings(sidePose, "Side view"),
+    ...getBodyFitWarnings(frontPose, "Front view", { minimum: 0.48, maximum: 0.94 }),
+    ...getBodyFitWarnings(sidePose, "Side view", { minimum: 0.38, maximum: 0.96 }),
+  );
+
+  const frontLandmarks = getLandmarkSummary(frontPose);
+  const sideLandmarks = getLandmarkSummary(sidePose);
+
+  if (!frontLandmarks.hasExpectedLandmarks) {
+    warnings.push("Front view landmark set is incomplete. Future high-accuracy processing may need a retake.");
+  }
+
+  if (!sideLandmarks.hasExpectedLandmarks) {
+    warnings.push("Side view landmark set is incomplete. Future high-accuracy processing may need a retake.");
+  }
+
+  return { errors, warnings };
+}
+
 function buildSilhouetteMeasurements(payload, height, profile) {
   const frontRaster = parseRaster(payload.rasters?.front);
   const sideRaster = parseRaster(payload.rasters?.side);
@@ -513,10 +706,22 @@ function buildSilhouetteMeasurements(payload, height, profile) {
     return null;
   }
 
-  const frontMask = buildForegroundMask(frontRaster);
-  const sideMask = buildForegroundMask(sideRaster);
   const frontLevels = frontMetrics.silhouetteLevels;
   const sideLevelsSource = sideMetrics?.silhouetteLevels || frontLevels;
+  const rawFrontMask = buildForegroundMask(frontRaster);
+  const rawSideMask = buildForegroundMask(sideRaster);
+  const frontCleanup = getBodyComponentMask(rawFrontMask, frontRaster.width, frontRaster.height, {
+    centerX: getCenterX(frontMetrics),
+    topY: frontLevels.bodyTopY,
+    bottomY: frontLevels.bodyBottomY,
+  });
+  const sideCleanup = getBodyComponentMask(rawSideMask, sideRaster.width, sideRaster.height, {
+    centerX: getCenterX(sideMetrics),
+    topY: sideLevelsSource.bodyTopY,
+    bottomY: sideLevelsSource.bodyBottomY,
+  });
+  const frontMask = frontCleanup.mask;
+  const sideMask = sideCleanup.mask;
   const frontBodyPixelHeight = Math.max((frontLevels.bodyBottomY - frontLevels.bodyTopY) * frontRaster.height, frontRaster.height * 0.55);
   const sideBodyPixelHeight = Math.max((sideLevelsSource.bodyBottomY - sideLevelsSource.bodyTopY) * sideRaster.height, sideRaster.height * 0.55);
   const frontCmPerPixel = height / frontBodyPixelHeight;
@@ -600,10 +805,14 @@ function buildSilhouetteMeasurements(payload, height, profile) {
     bodyHeightRatio,
     frontCmPerPixel,
     sideCmPerPixel,
+    maskCleanup: {
+      front: frontCleanup.metadata,
+      side: sideCleanup.metadata,
+    },
   };
 }
 
-function buildMeasurements(payload) {
+function buildMeasurements(payload, captureWarnings = []) {
   const profile = payload.profile || "male";
   const height = getHeightCm(payload);
   const frontPose = payload.poseMetrics?.front;
@@ -755,19 +964,30 @@ function buildMeasurements(payload) {
       waistToHip: roundHalf(waistToHip),
     },
     confidence: {
-      overall: Object.values(acceptedSilhouette).some(Boolean) ? 78 : hasPoseMetrics ? 72 : 55,
-      chest: acceptedSilhouette.chest ? 78 : hasPoseMetrics ? 68 : 50,
-      waist: acceptedSilhouette.waist ? 78 : hasPoseMetrics ? 68 : 50,
-      hip: acceptedSilhouette.hip ? 80 : hasPoseMetrics ? 70 : 52,
+      overall: Math.max((Object.values(acceptedSilhouette).some(Boolean) ? 78 : hasPoseMetrics ? 72 : 55) - captureWarnings.length * 3, 45),
+      chest: Math.max((acceptedSilhouette.chest ? 78 : hasPoseMetrics ? 68 : 50) - captureWarnings.length * 2, 42),
+      waist: Math.max((acceptedSilhouette.waist ? 78 : hasPoseMetrics ? 68 : 50) - captureWarnings.length * 2, 42),
+      hip: Math.max((acceptedSilhouette.hip ? 80 : hasPoseMetrics ? 70 : 52) - captureWarnings.length * 2, 42),
     },
-    warnings: silhouette
-      ? []
-      : ["Silhouette sampling could not run. Check that front and side photos are full-body images on a plain background."],
+    warnings: [
+      ...captureWarnings,
+      ...(silhouette
+        ? []
+        : ["Silhouette sampling could not run. Check that front and side photos are full-body images on a plain background."]),
+    ],
     debug: {
       engine: silhouette ? "2.5d-silhouette-backend" : "pose-baseline-backend",
       heightCm: roundHalf(height),
       usedPoseMetrics: hasPoseMetrics,
       usedSilhouetteSampling: Boolean(silhouette),
+      captureValidation: {
+        warningCount: captureWarnings.length,
+        warnings: captureWarnings,
+        landmarks: {
+          front: getLandmarkSummary(payload.poseMetrics?.front),
+          side: getLandmarkSummary(payload.poseMetrics?.side),
+        },
+      },
       circumferenceGuard: "direct-scanned-rows-with-profile-clamps-v1",
       silhouetteSelection: {
         waist: "narrowest torso row",
@@ -833,6 +1053,7 @@ function buildMeasurements(payload) {
       acceptedSilhouette,
       frontCmPerPixel: silhouette ? Number(silhouette.frontCmPerPixel.toFixed(4)) : null,
       sideCmPerPixel: silhouette ? Number(silhouette.sideCmPerPixel.toFixed(4)) : null,
+      maskCleanup: silhouette?.maskCleanup || null,
       silhouetteSamples: silhouette
         ? {
           chest: silhouette.chest,
@@ -921,7 +1142,17 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    sendJson(response, 200, buildMeasurements(payload));
+    const captureValidation = validateCapturePayload(payload);
+
+    if (captureValidation.errors.length > 0) {
+      sendJson(response, 400, {
+        error: captureValidation.errors.join(" "),
+        warnings: captureValidation.warnings,
+      });
+      return;
+    }
+
+    sendJson(response, 200, buildMeasurements(payload, captureValidation.warnings));
   } catch (error) {
     sendJson(response, 500, { error: error.message || "Segmentation backend failed" });
   }

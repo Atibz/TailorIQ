@@ -2,6 +2,7 @@ export { referenceObjects } from "../../shared/referenceObjects";
 
 export const baseGuidelineLabels = {
   fullBody: "Full body is visible",
+  bodyFit: "Body fills the guide well",
   centered: "Body is centered in the frame",
   upright: "Camera is straight and level",
   armsClear: "Arms leave a small gap at the sides",
@@ -12,6 +13,7 @@ export const baseGuidelineLabels = {
 
 export const baseGuidelineFixes = {
   fullBody: "Make sure the whole body is inside the photo, from head to feet.",
+  bodyFit: "Move closer or farther until the body fills most of the guide without cutting off the head or feet.",
   centered: "Place the person near the center of the photo.",
   upright: "Keep the phone straight and avoid a tilted photo.",
   armsClear: "Relax the arms naturally with a small visible gap from the body so the waist and sides are not hidden.",
