@@ -87,6 +87,11 @@ const stepContent = {
     title: "Set up your phone",
     description: "Place your phone where it can see your whole body before starting the guided capture.",
   },
+  photoReview: {
+    eyebrow: "Step 5",
+    title: "Check your photos",
+    description: "Review the front and side photos before analysis begins.",
+  },
   captureMethod: {
     eyebrow: "Step 3",
     title: "Photo setup",
@@ -237,6 +242,79 @@ function SelfCaptureSetup() {
   );
 }
 
+function ClientPhotoReview({ photos, onRetake }) {
+  const [previewMode, setPreviewMode] = useState("original");
+  const hasSilhouette = Boolean(photos.front?.silhouettePreview || photos.side?.silhouettePreview);
+
+  return (
+    <div className="space-y-4">
+      {hasSilhouette && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
+          <div>
+            <p className="text-sm font-semibold text-stone-950">Photo preview</p>
+            <p className="mt-1 text-xs text-stone-500">Original is shown first. Use silhouette only for privacy checks.</p>
+          </div>
+          <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
+            {[
+              { id: "original", label: "Original" },
+              { id: "silhouette", label: "Silhouette" },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setPreviewMode(mode.id)}
+                className={`min-h-8 rounded-full px-3 text-xs font-semibold transition ${
+                  previewMode === mode.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {Object.entries({ front: "Front photo", side: "Side photo" }).map(([view, label]) => {
+          const photo = photos[view];
+          const preview = previewMode === "silhouette" ? photo?.silhouettePreview || photo?.preview : photo?.preview;
+
+          return (
+            <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+                <p className="text-sm font-semibold text-stone-950">{label}</p>
+                <button
+                  type="button"
+                  onClick={() => onRetake(view)}
+                  className="rounded-md border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  Retake
+                </button>
+              </div>
+              {preview ? (
+                <div className="relative">
+                  <img className="aspect-[3/4] w-full bg-stone-950 object-contain" src={preview} alt={`${label} preview`} />
+                  {previewMode === "silhouette" && photo?.silhouettePreview && (
+                    <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                      Privacy silhouette
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-64 items-center justify-center bg-stone-50 px-4 text-center text-sm text-stone-500">
+                  No {label.toLowerCase()} yet.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+        Continue only if your head, feet, and full body shape are visible in both photos.
+      </div>
+    </div>
+  );
+}
+
 function CaptureMethodChoice({ isClientMode, referenceObject, scaleMode, measurementProfile, onChoose }) {
   if (isClientMode) {
     return (
@@ -352,6 +430,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
         ? [{ id: "clientSetup", label: "Phone setup", done: activeStep === "photos" || hasPhotos }]
         : []),
       { id: "photos", label: "Photos", done: hasPhotos },
+      ...(isClientMode ? [{ id: "photoReview", label: "Photo review", done: hasPhotos && activeStep !== "photos" }] : []),
       ...(needsReference ? [{ id: "reference", label: "Reference mark", done: hasReferenceCalibration }] : []),
       { id: "review", label: isProcessing ? "Processing" : "Review", done: false },
     ],
@@ -549,6 +628,10 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
     if (stepId === "captureMethod" && !captureInputMode) {
       return isClientMode ? "Choose whether you are taking the photos yourself or getting help." : "Choose whether to use the camera or upload photos.";
+    }
+
+    if (stepId === "photoReview" && !hasPhotos) {
+      return "Review both front and side photos before analysis begins.";
     }
 
     if (stepId === "reference" && needsReference && !referenceCalibration) {
@@ -789,6 +872,10 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
             inputMode={["camera", "self-camera", "friend-camera"].includes(captureInputMode) ? "camera" : captureInputMode}
             captureMode={captureInputMode === "self-camera" ? "self" : "assisted"}
           />
+        )}
+
+        {currentStep === "photoReview" && (
+          <ClientPhotoReview photos={capture.photos} onRetake={handleRetakePhoto} />
         )}
 
         {currentStep === "reference" && values.scaleMode === "reference" && (

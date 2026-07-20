@@ -119,6 +119,20 @@
   }
 }
 
+@keyframes capture-flash {
+  0% {
+    opacity: 0;
+  }
+
+  16% {
+    opacity: 0.88;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes animation-progress {
   from {
     width: 0%;

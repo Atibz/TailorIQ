@@ -49,6 +49,38 @@ function getConciseCameraInstruction(message, isSelfCapture) {
   return "Step back until your full body is visible.";
 }
 
+function playCaptureSound() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContext) {
+      return;
+    }
+
+    const audioContext = new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.14);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.15);
+    window.setTimeout(() => audioContext.close?.(), 250);
+  } catch {
+    // The flash still confirms capture if audio is blocked.
+  }
+}
+
 function GuidedCapturePanel({
   activeCapture,
   allGuidelinesPassed,
@@ -72,6 +104,8 @@ function GuidedCapturePanel({
 }) {
   const [countdown, setCountdown] = useState(null);
   const [isSelfCountdownRunning, setIsSelfCountdownRunning] = useState(false);
+  const [captureFlashKey, setCaptureFlashKey] = useState(0);
+  const [isCaptureCoolingDown, setIsCaptureCoolingDown] = useState(false);
   const lastSpokenInstructionRef = useRef("");
   const lastSpokenAtRef = useRef(0);
   const capturePhotoRef = useRef(capturePhoto);
@@ -172,9 +206,13 @@ function GuidedCapturePanel({
       setCountdown(0);
       speak("Capturing now.");
       window.setTimeout(() => {
+        setIsCaptureCoolingDown(true);
+        setCaptureFlashKey((currentKey) => currentKey + 1);
+        playCaptureSound();
         capturePhotoRef.current?.();
         setCountdown(null);
         setIsSelfCountdownRunning(false);
+        window.setTimeout(() => setIsCaptureCoolingDown(false), 1800);
       }, 250);
     }, 1000);
 
@@ -185,12 +223,12 @@ function GuidedCapturePanel({
   }, [activeCapture, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
 
   useEffect(() => {
-    if (!isSelfCapture || !isSelfFrameReady || isSelfCountdownRunning || countdown !== null) {
+    if (!isSelfCapture || !isSelfFrameReady || isSelfCountdownRunning || countdown !== null || isCaptureCoolingDown) {
       return;
     }
 
     setIsSelfCountdownRunning(true);
-  }, [countdown, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
+  }, [countdown, isCaptureCoolingDown, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
 
   useEffect(() => {
     setCountdown(null);
@@ -223,6 +261,13 @@ function GuidedCapturePanel({
           playsInline
         />
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
+        {captureFlashKey > 0 && (
+          <div
+            key={captureFlashKey}
+            className="pointer-events-none absolute inset-0 z-40 animate-[capture-flash_520ms_ease-out_forwards] bg-white"
+            aria-hidden="true"
+          />
+        )}
 
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 pb-20 pt-36">
           <div className="relative h-[min(56vh,27rem)] w-[min(54vw,15rem)]">
@@ -291,6 +336,8 @@ function GuidedCapturePanel({
                   return;
                 }
 
+                setCaptureFlashKey((currentKey) => currentKey + 1);
+                playCaptureSound();
                 capturePhoto();
               }}
               className="flex h-20 w-20 items-center justify-center rounded-full border-[5px] border-emerald-200 bg-emerald-500 shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600"

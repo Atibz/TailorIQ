@@ -700,9 +700,15 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
         },
     }));
 
-    if (activeCaptureRef.current === "front") {
-      setActiveCapture("side");
+    const capturedView = activeCaptureRef.current;
+
+    if (capturedView === "front") {
+      window.setTimeout(() => {
+        setActiveCapture("side");
+      }, 1400);
     }
+
+    return { ok: true, view: capturedView };
   };
 
   const handleUploadPhoto = async (view, file) => {
