@@ -470,6 +470,7 @@ function AuthPage({ onLogin, onSignup }) {
   const [showPassword, setShowPassword] = useState(false);
   const [formValues, setFormValues] = useState({
     fullName: "",
+    email: "",
     username: "",
     password: "",
   });
@@ -485,24 +486,26 @@ function AuthPage({ onLogin, onSignup }) {
   };
   const handleSubmit = (event) => {
     event.preventDefault();
+    const email = formValues.email.trim().toLowerCase();
     const username = formValues.username.trim().replace(/^@/, "").toLowerCase();
+    const identifier = username;
     const password = formValues.password;
 
-    if (!username || !password || (isSignup && !formValues.fullName.trim())) {
-      setAuthError(isSignup ? "Enter your name, username, and password." : "Enter your username and password.");
+    if ((!identifier && !isSignup) || !password || (isSignup && (!formValues.fullName.trim() || !email || !username))) {
+      setAuthError(isSignup ? "Enter your name, email, username, and password." : "Enter your email/username and password.");
       return;
     }
 
     const result = isSignup
-      ? onSignup({ fullName: formValues.fullName.trim(), username, password })
-      : onLogin({ username, password });
+      ? onSignup({ fullName: formValues.fullName.trim(), email, username, password })
+      : onLogin({ identifier, password });
 
     if (!result.ok) {
       setAuthError(result.message);
       return;
     }
 
-    setFormValues({ fullName: "", username: "", password: "" });
+    setFormValues({ fullName: "", email: "", username: "", password: "" });
   };
 
   return (
@@ -594,27 +597,41 @@ function AuthPage({ onLogin, onSignup }) {
 
               <div className="mt-5 grid gap-3">
                 {isSignup && (
-                  <label className="text-sm font-semibold text-stone-800">
-                    Full name
-                    <input
-                      type="text"
-                      name="fullName"
-                      value={formValues.fullName}
-                      onChange={handleChange}
-                      className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                      placeholder="Your name"
-                    />
-                  </label>
+                  <>
+                    <label className="text-sm font-semibold text-stone-800">
+                      Full name
+                      <input
+                        type="text"
+                        name="fullName"
+                        value={formValues.fullName}
+                        onChange={handleChange}
+                        className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                        placeholder="Your name"
+                      />
+                    </label>
+                    <label className="text-sm font-semibold text-stone-800">
+                      Email
+                      <input
+                        type="email"
+                        name="email"
+                        value={formValues.email}
+                        onChange={handleChange}
+                        className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                        placeholder="you@example.com"
+                        autoCapitalize="none"
+                      />
+                    </label>
+                  </>
                 )}
                 <label className="text-sm font-semibold text-stone-800">
-                  Email / Username
+                  {isSignup ? "Username" : "Email / Username"}
                   <input
                     type="text"
                     name="username"
                     value={formValues.username}
                     onChange={handleChange}
                     className="mt-2 min-h-11 w-full rounded-full border border-stone-200 bg-stone-100 px-4 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                    placeholder="email or username"
+                    placeholder={isSignup ? "tailor_username" : "email or username"}
                     autoCapitalize="none"
                   />
                 </label>
@@ -636,7 +653,13 @@ function AuthPage({ onLogin, onSignup }) {
                       aria-label={showPassword ? "Hide password" : "Show password"}
                       title={showPassword ? "Hide password" : "Show password"}
                     >
-                      <span className="text-xs font-bold">{showPassword ? "Hide" : "View"}</span>
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                        {showPassword ? (
+                          <path d="m2.39 1.73 19.88 19.88-1.41 1.41-3.18-3.18A11.86 11.86 0 0 1 12 21C5 21 1 12 1 12a20.8 20.8 0 0 1 5.2-6.62L.98 1.14l1.41-1.41Zm7.07 7.07a3 3 0 0 0 4.24 4.24L9.46 8.8ZM12 3c7 0 11 9 11 9a20.87 20.87 0 0 1-3.39 4.86l-2.84-2.84A5 5 0 0 0 9.98 7.23L7.82 5.07A11.83 11.83 0 0 1 12 3Z" />
+                        ) : (
+                          <path d="M12 5c7 0 11 7 11 7s-4 7-11 7S1 12 1 12s4-7 11-7Zm0 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0-2.2a1.8 1.8 0 1 1 0-3.6 1.8 1.8 0 0 1 0 3.6Z" />
+                        )}
+                      </svg>
                     </button>
                   </span>
                 </label>
@@ -710,27 +733,41 @@ function AuthPage({ onLogin, onSignup }) {
 
           <div className="mt-5 grid gap-4">
             {isSignup && (
-              <label className="text-sm font-semibold text-stone-800">
-                Full name
-                <input
-                  type="text"
-                  name="fullName"
-                  value={formValues.fullName}
-                  onChange={handleChange}
-                  className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                  placeholder="Your name"
-                />
-              </label>
+              <>
+                <label className="text-sm font-semibold text-stone-800">
+                  Full name
+                  <input
+                    type="text"
+                    name="fullName"
+                    value={formValues.fullName}
+                    onChange={handleChange}
+                    className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                    placeholder="Your name"
+                  />
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  Email
+                  <input
+                    type="email"
+                    name="email"
+                    value={formValues.email}
+                    onChange={handleChange}
+                    className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                    placeholder="you@example.com"
+                    autoCapitalize="none"
+                  />
+                </label>
+              </>
             )}
             <label className="text-sm font-semibold text-stone-800">
-              Email / Username
+              {isSignup ? "Username" : "Email / Username"}
               <input
                 type="text"
                 name="username"
                 value={formValues.username}
                 onChange={handleChange}
                 className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                placeholder="email or username"
+                placeholder={isSignup ? "tailor_username" : "email or username"}
                 autoCapitalize="none"
               />
             </label>
@@ -749,8 +786,16 @@ function AuthPage({ onLogin, onSignup }) {
                   type="button"
                   onClick={() => setShowPassword((currentValue) => !currentValue)}
                   className="absolute right-2 top-1/2 min-h-8 -translate-y-1/2 rounded-md px-2 text-xs font-bold text-stone-500 transition hover:bg-stone-100 hover:text-stone-950"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? "Hide" : "View"}
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                    {showPassword ? (
+                      <path d="m2.39 1.73 19.88 19.88-1.41 1.41-3.18-3.18A11.86 11.86 0 0 1 12 21C5 21 1 12 1 12a20.8 20.8 0 0 1 5.2-6.62L.98 1.14l1.41-1.41Zm7.07 7.07a3 3 0 0 0 4.24 4.24L9.46 8.8ZM12 3c7 0 11 9 11 9a20.87 20.87 0 0 1-3.39 4.86l-2.84-2.84A5 5 0 0 0 9.98 7.23L7.82 5.07A11.83 11.83 0 0 1 12 3Z" />
+                    ) : (
+                      <path d="M12 5c7 0 11 7 11 7s-4 7-11 7S1 12 1 12s4-7 11-7Zm0 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0-2.2a1.8 1.8 0 1 1 0-3.6 1.8 1.8 0 0 1 0 3.6Z" />
+                    )}
+                  </svg>
                 </button>
               </span>
             </label>
@@ -2871,7 +2916,11 @@ function App() {
     }
   }, [activePage]);
 
-  const handleSignup = ({ fullName, username, password }) => {
+  const handleSignup = ({ fullName, email, username, password }) => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, message: "Enter a valid email address." };
+    }
+
     if (!/^[a-z0-9_]{3,24}$/.test(username)) {
       return { ok: false, message: "Use 3-24 lowercase letters, numbers, or underscores for username." };
     }
@@ -2884,9 +2933,14 @@ function App() {
       return { ok: false, message: "That username is already taken." };
     }
 
+    if (authUsers.some((user) => user.email?.toLowerCase() === email)) {
+      return { ok: false, message: "That email is already registered." };
+    }
+
     const nextUser = {
       id: `user-${Date.now()}-${Math.round(Math.random() * 100000)}`,
       fullName,
+      email,
       username,
       password,
       mode: "",
@@ -2900,14 +2954,18 @@ function App() {
     return { ok: true };
   };
 
-  const handleLogin = ({ username, password }) => {
-    const matchingUser = authUsers.find((user) => user.username === username && user.password === password);
+  const handleLogin = ({ identifier, password }) => {
+    const loginId = identifier.trim().replace(/^@/, "").toLowerCase();
+    const matchingUser = authUsers.find((user) => (
+      (user.username === loginId || user.email?.toLowerCase() === loginId) &&
+      user.password === password
+    ));
 
     if (!matchingUser) {
-      return { ok: false, message: "Username or password is incorrect." };
+      return { ok: false, message: "Email/username or password is incorrect." };
     }
 
-    setAuthSession({ username });
+    setAuthSession({ username: matchingUser.username });
     setUserMode(matchingUser.mode || "");
     setActivePage("dashboard");
     setProcessedCustomer(null);

@@ -103,7 +103,7 @@ function GuidedCapturePanel({
   }, [isCameraCapture, isSelfCapture]);
 
   useEffect(() => {
-    if (!isCameraCapture || typeof window === "undefined" || !window.speechSynthesis) {
+    if (!isCameraCapture || isSelfCapture || typeof window === "undefined" || !window.speechSynthesis) {
       return undefined;
     }
 
@@ -215,12 +215,12 @@ function GuidedCapturePanel({
       <div className="fixed inset-0 z-50 h-[100dvh] min-h-[100dvh] overflow-hidden overscroll-none bg-black text-white">
         <video
           ref={videoRef}
-          className={`h-full w-full object-cover transition-opacity ${isCameraActive ? "opacity-100" : "opacity-0"}`}
+          className={`h-full w-full object-contain transition-opacity ${isCameraActive ? "opacity-100" : "opacity-0"} ${isSelfCapture ? "-scale-x-100" : ""}`}
           autoPlay
           muted
           playsInline
         />
-        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
 
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 pb-20 pt-36">
           <div className="relative h-[min(56vh,27rem)] w-[min(54vw,15rem)]">

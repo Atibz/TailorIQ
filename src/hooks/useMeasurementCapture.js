@@ -609,15 +609,23 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: cameraFacingModeRef.current },
-          width: { ideal: 1080 },
-          height: { ideal: 1920 },
-          aspectRatio: { ideal: 9 / 16 },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       });
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
+
+      const [videoTrack] = stream.getVideoTracks();
+      const capabilities = videoTrack?.getCapabilities?.();
+
+      if (capabilities?.zoom && videoTrack.applyConstraints) {
+        await videoTrack.applyConstraints({
+          advanced: [{ zoom: capabilities.zoom.min }],
+        }).catch(() => {});
+      }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
