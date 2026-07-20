@@ -669,14 +669,6 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setError("");
     if (mode === "self-camera") {
       unlockSpeechGuidance("Audio guidance enabled. Set your phone down, then continue when you are ready.");
-
-      if (typeof window !== "undefined") {
-        const orientationPermission = window.DeviceOrientationEvent?.requestPermission?.();
-        const motionPermission = window.DeviceMotionEvent?.requestPermission?.();
-
-        orientationPermission?.catch(() => {});
-        motionPermission?.catch(() => {});
-      }
     }
     setActiveStep(isClientMode && mode === "self-camera" ? "clientSetup" : "photos");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
