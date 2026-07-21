@@ -715,7 +715,20 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setCaptureSessionKey((currentKey) => currentKey + 1);
     setCameraFeedback("");
     setError("");
-    if (["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
+    if (captureInputMode === "self-camera") {
+      capture.stopCamera();
+      capture.retakePhoto(view);
+      unlockSpeechGuidance(
+        view === "front"
+          ? "Retake front view. Place the phone down, step back, and continue when ready."
+          : "Retake side view. Place the phone down, turn to your side, and continue when ready.",
+      );
+      setActiveStep("clientSetup");
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      return;
+    }
+
+    if (["camera", "friend-camera"].includes(captureInputMode)) {
       capture.stopCamera();
       capture.retakePhotoWithCamera(view);
     } else {
