@@ -2850,7 +2850,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-stone-950">Photo previews</p>
-              <p className="mt-1 text-sm text-stone-500">Background is removed and the face is censored while the full-body shape remains visible.</p>
+              <p className="mt-1 text-sm text-stone-500">Preview is cropped around the person and the face is censored.</p>
             </div>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -2860,7 +2860,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
                   <img src={photo.preview} alt={`${photo.view} preview`} className="tiq-cutout-preview-bg h-64 w-full object-contain" />
                   {photo.isCensored && (
                     <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-                      Background removed
+                      Cropped preview
                     </span>
                   )}
                 </div>

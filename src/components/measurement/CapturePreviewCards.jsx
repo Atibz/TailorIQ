@@ -27,7 +27,7 @@ function CapturePreviewCards({ photos, onRetake }) {
               />
               {photos[view].censoredPreview && (
                 <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-                  Background removed
+                  Cropped preview
                 </span>
               )}
             </div>

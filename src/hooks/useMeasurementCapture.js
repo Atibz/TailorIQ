@@ -206,110 +206,25 @@ function getPoseBounds(poseMetrics) {
   };
 }
 
-function createCutoutCensoredPreviewFromImageSource(source, poseMetrics, maxSize = 900) {
+function createCroppedCensoredPreviewFromImageSource(source, poseMetrics, maxSize = 900, quality = 0.78) {
   const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
   const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
-  const scale = Math.min(maxSize / sourceWidth, maxSize / sourceHeight, 1);
-  const width = Math.max(Math.round(sourceWidth * scale), 1);
-  const height = Math.max(Math.round(sourceHeight * scale), 1);
+  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
+  const poseBounds = getPoseBounds(poseMetrics);
+  const crop = poseBounds || { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+  const cropX = Math.max(Math.round(crop.minX * sourceWidth), 0);
+  const cropY = Math.max(Math.round(crop.minY * sourceHeight), 0);
+  const cropWidth = Math.min(Math.round((crop.maxX - crop.minX) * sourceWidth), sourceWidth - cropX);
+  const cropHeight = Math.min(Math.round((crop.maxY - crop.minY) * sourceHeight), sourceHeight - cropY);
+  const scale = Math.min(maxSize / cropWidth, maxSize / cropHeight, 1);
+  const width = Math.max(Math.round(cropWidth * scale), 1);
+  const height = Math.max(Math.round(cropHeight * scale), 1);
   const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const context = canvas.getContext("2d");
 
   canvas.width = width;
   canvas.height = height;
-  context.drawImage(source, 0, 0, width, height);
-
-  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
-  const poseBounds = getPoseBounds(poseMetrics);
-
-  if (poseBounds && landmarks.length) {
-    const maskCanvas = document.createElement("canvas");
-    const maskContext = maskCanvas.getContext("2d");
-    const point = (index) => {
-      const landmark = landmarks[index];
-
-      return landmark ? { x: landmark.x * width, y: landmark.y * height } : null;
-    };
-    const drawLimb = (first, second, strokeWidth) => {
-      if (!first || !second) {
-        return;
-      }
-
-      maskContext.lineWidth = strokeWidth;
-      maskContext.beginPath();
-      maskContext.moveTo(first.x, first.y);
-      maskContext.lineTo(second.x, second.y);
-      maskContext.stroke();
-    };
-
-    maskCanvas.width = width;
-    maskCanvas.height = height;
-    maskContext.fillStyle = "#ffffff";
-    maskContext.strokeStyle = "#ffffff";
-    maskContext.lineCap = "round";
-    maskContext.lineJoin = "round";
-
-    const nose = point(0);
-    const leftShoulder = point(11);
-    const rightShoulder = point(12);
-    const leftElbow = point(13);
-    const rightElbow = point(14);
-    const leftWrist = point(15);
-    const rightWrist = point(16);
-    const leftHip = point(23);
-    const rightHip = point(24);
-    const leftKnee = point(25);
-    const rightKnee = point(26);
-    const leftAnkle = point(27);
-    const rightAnkle = point(28);
-    const shoulderWidth = leftShoulder && rightShoulder
-      ? Math.abs(rightShoulder.x - leftShoulder.x)
-      : width * 0.22;
-    const torsoWidth = Math.max(shoulderWidth * 0.72, width * 0.09);
-    const limbWidth = Math.max(shoulderWidth * 0.22, width * 0.035);
-    const legWidth = Math.max(shoulderWidth * 0.28, width * 0.045);
-
-    if (nose) {
-      maskContext.beginPath();
-      maskContext.ellipse(nose.x, nose.y + shoulderWidth * 0.12, shoulderWidth * 0.42, shoulderWidth * 0.52, 0, 0, Math.PI * 2);
-      maskContext.fill();
-    }
-
-    if (leftShoulder && rightShoulder && leftHip && rightHip) {
-      maskContext.beginPath();
-      maskContext.moveTo(leftShoulder.x - torsoWidth * 0.18, leftShoulder.y);
-      maskContext.lineTo(rightShoulder.x + torsoWidth * 0.18, rightShoulder.y);
-      maskContext.lineTo(rightHip.x + torsoWidth * 0.28, rightHip.y);
-      maskContext.lineTo(leftHip.x - torsoWidth * 0.28, leftHip.y);
-      maskContext.closePath();
-      maskContext.fill();
-    }
-
-    drawLimb(leftShoulder, leftElbow, limbWidth);
-    drawLimb(leftElbow, leftWrist, limbWidth);
-    drawLimb(rightShoulder, rightElbow, limbWidth);
-    drawLimb(rightElbow, rightWrist, limbWidth);
-    drawLimb(leftHip, leftKnee, legWidth);
-    drawLimb(leftKnee, leftAnkle, legWidth);
-    drawLimb(rightHip, rightKnee, legWidth);
-    drawLimb(rightKnee, rightAnkle, legWidth);
-
-    context.save();
-    context.globalCompositeOperation = "destination-in";
-    context.drawImage(maskCanvas, 0, 0);
-    context.restore();
-  } else if (poseBounds) {
-    context.save();
-    context.globalCompositeOperation = "destination-in";
-    context.fillStyle = "#ffffff";
-    context.fillRect(
-      poseBounds.minX * width,
-      poseBounds.minY * height,
-      (poseBounds.maxX - poseBounds.minX) * width,
-      (poseBounds.maxY - poseBounds.minY) * height,
-    );
-    context.restore();
-  }
+  context.drawImage(source, cropX, cropY, cropWidth, cropHeight, 0, 0, width, height);
 
   const nose = landmarks[0];
 
@@ -320,12 +235,14 @@ function createCutoutCensoredPreviewFromImageSource(source, poseMetrics, maxSize
   const leftShoulder = landmarks[11];
   const rightShoulder = landmarks[12];
   const shoulderWidthPx = leftShoulder && rightShoulder
-    ? Math.abs(rightShoulder.x - leftShoulder.x) * width
+    ? Math.abs(rightShoulder.x - leftShoulder.x) * sourceWidth * scale
     : width * 0.18;
   const censorWidth = Math.min(Math.max(shoulderWidthPx * 0.52, width * 0.1), width * 0.24);
   const censorHeight = censorWidth * 0.72;
-  const x = Math.min(Math.max(nose.x * width - censorWidth / 2, 0), width - censorWidth);
-  const y = Math.min(Math.max(nose.y * height - censorHeight * 0.52, 0), height - censorHeight);
+  const noseX = (nose.x * sourceWidth - cropX) * scale;
+  const noseY = (nose.y * sourceHeight - cropY) * scale;
+  const x = Math.min(Math.max(noseX - censorWidth / 2, 0), width - censorWidth);
+  const y = Math.min(Math.max(noseY - censorHeight * 0.52, 0), height - censorHeight);
   const radius = Math.min(censorHeight, censorWidth) * 0.24;
 
   context.save();
@@ -345,7 +262,7 @@ function createCutoutCensoredPreviewFromImageSource(source, poseMetrics, maxSize
 
   context.restore();
 
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL("image/jpeg", quality);
 }
 
 function createImageFromFile(file) {
@@ -773,7 +690,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
     const poseMetrics = latestPoseMetricsRef.current;
     const preview = createPreviewFromImageSource(videoRef.current);
-    const censoredPreview = createCutoutCensoredPreviewFromImageSource(videoRef.current, poseMetrics);
+    const censoredPreview = createCroppedCensoredPreviewFromImageSource(videoRef.current, poseMetrics);
 
     setPhotos((currentPhotos) => ({
       ...currentPhotos,
@@ -848,7 +765,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
             view: captureLabels[view],
             fileName: `${captureLabels[view]} uploaded photo`,
             preview: createPreviewFromImageSource(image),
-            censoredPreview: createCutoutCensoredPreviewFromImageSource(image, poseMetrics),
+            censoredPreview: createCroppedCensoredPreviewFromImageSource(image, poseMetrics),
             poseMetrics,
           },
         };

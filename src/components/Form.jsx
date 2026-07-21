@@ -248,7 +248,7 @@ function ClientPhotoReview({ photos, onRetake }) {
       <div className="rounded-lg border border-stone-200 bg-white p-3">
         <div>
           <p className="text-sm font-semibold text-stone-950">Photo preview</p>
-          <p className="mt-1 text-xs text-stone-500">Background is removed and the face is censored. Full-body shape remains visible for review.</p>
+          <p className="mt-1 text-xs text-stone-500">Preview is cropped around the person and the face is censored.</p>
         </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -272,7 +272,7 @@ function ClientPhotoReview({ photos, onRetake }) {
                 <div className="relative">
                   <img className="tiq-cutout-preview-bg aspect-[3/4] w-full object-contain" src={preview} alt={`${label} preview`} />
                   <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-                    Background removed
+                    Cropped preview
                   </span>
                 </div>
               ) : (
