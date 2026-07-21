@@ -270,7 +270,7 @@ function ClientPhotoReview({ photos, onRetake }) {
               </div>
               {preview ? (
                 <div className="relative">
-                  <img className="aspect-[3/4] w-full bg-stone-950 object-contain" src={preview} alt={`${label} preview`} />
+                  <img className="tiq-cutout-preview-bg aspect-[3/4] w-full object-contain" src={preview} alt={`${label} preview`} />
                   <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
                     Background removed
                   </span>
@@ -366,6 +366,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraFeedback, setCameraFeedback] = useState("");
   const [retakeTargetView, setRetakeTargetView] = useState("");
+  const [captureSessionKey, setCaptureSessionKey] = useState(0);
   const cameraAutoStartRequestedRef = useRef(false);
   const startCameraRef = useRef(null);
   const capture = useMeasurementCapture({
@@ -733,6 +734,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }
 
     setRetakeTargetView(view);
+    setCaptureSessionKey((currentKey) => currentKey + 1);
     setCameraFeedback("");
     setError("");
     capture.retakePhoto(view);
@@ -859,6 +861,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
             videoRef={capture.videoRef}
             inputMode={["camera", "self-camera", "friend-camera"].includes(captureInputMode) ? "camera" : captureInputMode}
             captureMode={captureInputMode === "self-camera" ? "self" : "assisted"}
+            captureSessionKey={captureSessionKey}
           />
         )}
 

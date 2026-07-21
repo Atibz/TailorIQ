@@ -101,6 +101,7 @@ function GuidedCapturePanel({
   videoRef,
   inputMode,
   captureMode = "assisted",
+  captureSessionKey = 0,
 }) {
   const [countdown, setCountdown] = useState(null);
   const [isSelfCountdownRunning, setIsSelfCountdownRunning] = useState(false);
@@ -177,11 +178,14 @@ function GuidedCapturePanel({
 
     const selfCaptureCountdownSeconds = 5;
     let remaining = selfCaptureCountdownSeconds;
-    const startTimer = window.setTimeout(() => setCountdown(remaining), 0);
+    let countdownTimer;
+    let captureTimer;
+    let fallbackStartTimer;
+    let hasStartedCountdown = false;
 
     const speak = (text) => {
       if (typeof window === "undefined" || !window.speechSynthesis) {
-        return;
+        return null;
       }
 
       window.speechSynthesis.cancel();
@@ -189,35 +193,56 @@ function GuidedCapturePanel({
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
+      return utterance;
     };
 
-    speak(activeCapture === "front" ? "Front ready. Hold still." : "Side ready. Hold still.");
-
-    const countdownTimer = window.setInterval(() => {
-      remaining -= 1;
-
-      if (remaining > 0) {
-        setCountdown(remaining);
-        speak(String(remaining));
+    const startCountdown = () => {
+      if (hasStartedCountdown) {
         return;
       }
 
-      window.clearInterval(countdownTimer);
-      setCountdown(0);
-      speak("Capturing now.");
-      window.setTimeout(() => {
-        setIsCaptureCoolingDown(true);
-        setCaptureFlashKey((currentKey) => currentKey + 1);
-        playCaptureSound();
-        capturePhotoRef.current?.();
-        setCountdown(null);
-        setIsSelfCountdownRunning(false);
-        window.setTimeout(() => setIsCaptureCoolingDown(false), 1800);
-      }, 250);
-    }, 1000);
+      hasStartedCountdown = true;
+      setCountdown(remaining);
+
+      countdownTimer = window.setInterval(() => {
+        remaining -= 1;
+
+        if (remaining > 0) {
+          setCountdown(remaining);
+          speak(String(remaining));
+          return;
+        }
+
+        window.clearInterval(countdownTimer);
+        setCountdown(0);
+        speak("Capturing now.");
+        captureTimer = window.setTimeout(() => {
+          setIsCaptureCoolingDown(true);
+          setCaptureFlashKey((currentKey) => currentKey + 1);
+          playCaptureSound();
+          capturePhotoRef.current?.();
+          setCountdown(null);
+          setIsSelfCountdownRunning(false);
+          window.setTimeout(() => setIsCaptureCoolingDown(false), 1800);
+        }, 250);
+      }, 1000);
+    };
+
+    const introText = activeCapture === "front"
+      ? "Front view ready. Hold still."
+      : "Side view ready. Turn fully to your side, keep your arms slightly away, and hold still.";
+    const introUtterance = speak(introText);
+
+    if (introUtterance) {
+      introUtterance.onend = startCountdown;
+      introUtterance.onerror = startCountdown;
+    }
+
+    fallbackStartTimer = window.setTimeout(startCountdown, activeCapture === "side" ? 4200 : 2200);
 
     return () => {
-      window.clearTimeout(startTimer);
+      window.clearTimeout(fallbackStartTimer);
+      window.clearTimeout(captureTimer);
       window.clearInterval(countdownTimer);
     };
   }, [activeCapture, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
@@ -233,7 +258,14 @@ function GuidedCapturePanel({
   useEffect(() => {
     setCountdown(null);
     setIsSelfCountdownRunning(false);
-  }, [activeCapture]);
+    setIsCaptureCoolingDown(false);
+    lastSpokenInstructionRef.current = "";
+    lastSpokenAtRef.current = 0;
+
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }, [activeCapture, captureSessionKey]);
 
   useEffect(() => {
     if (!isSelfFrameReady && isSelfCountdownRunning) {
@@ -280,7 +312,11 @@ function GuidedCapturePanel({
             >
               <path
                 fill="currentColor"
-                d="M80 18c18.8 0 31.2 14.3 31.2 35.5 0 22.6-12.6 39.4-31.2 39.4S48.8 76.1 48.8 53.5C48.8 32.3 61.2 18 80 18Zm-44.4 112.2c5.2-24.6 23.4-39.6 44.4-39.6s39.2 15 44.4 39.6l11.4 54.2c2.3 11.2 7.9 21.3 15.9 29.3l-14.6 18.8c-9.6-8.7-16.3-19.6-20-32.4l-8.9-30.7-2.8 86.7 22.1 132.6h-31L80 279.2 63.5 388.7h-31l22.1-132.6-2.8-86.7-8.9 30.7c-3.7 12.8-10.4 23.7-20 32.4L8.3 213.7c8-8 13.6-18.1 15.9-29.3l11.4-54.2Z"
+                d={
+                  activeCapture === "side"
+                    ? "M83 18c14.6 0 24.4 13.8 24.4 35.3 0 22.9-9.9 39.7-24.4 39.7S58.6 76.2 58.6 53.3C58.6 31.8 68.4 18 83 18Zm-19.8 108.7c3.3-23.1 10.1-35.5 21.2-35.5 12.9 0 21.5 15.6 25 39.4l8.3 56c1.9 12.9 7.7 24.7 16.4 34.1l-14.9 17.2c-10.8-10.4-17.8-23.1-20.8-37.8l-5.6-27.9 6.1 82.9 30.7 133.6h-29.8L80.7 282.3 63.2 388.7H33.4l29.3-133.6-2.8-86.1-5.1 29.8c-2.3 13.5-8.4 25.5-18.2 35.6l-15.4-16.8c7.6-9.1 12.5-19.7 14.6-31.4l27.4-59.5Z"
+                    : "M80 18c18.8 0 31.2 14.3 31.2 35.5 0 22.6-12.6 39.4-31.2 39.4S48.8 76.1 48.8 53.5C48.8 32.3 61.2 18 80 18Zm-44.4 112.2c5.2-24.6 23.4-39.6 44.4-39.6s39.2 15 44.4 39.6l11.4 54.2c2.3 11.2 7.9 21.3 15.9 29.3l-14.6 18.8c-9.6-8.7-16.3-19.6-20-32.4l-8.9-30.7-2.8 86.7 22.1 132.6h-31L80 279.2 63.5 388.7h-31l22.1-132.6-2.8-86.7-8.9 30.7c-3.7 12.8-10.4 23.7-20 32.4L8.3 213.7c8-8 13.6-18.1 15.9-29.3l11.4-54.2Z"
+                }
               />
             </svg>
             <div

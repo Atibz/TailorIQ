@@ -21,7 +21,7 @@ function CapturePreviewCards({ photos, onRetake }) {
           {photos[view]?.preview ? (
             <div className="relative mt-3">
               <img
-                className="aspect-video w-full rounded-md bg-stone-950 object-contain"
+                className="tiq-cutout-preview-bg aspect-video w-full rounded-md object-contain"
                 src={photos[view].censoredPreview || photos[view].preview}
                 alt={`${label} capture`}
               />

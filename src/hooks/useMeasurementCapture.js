@@ -219,49 +219,98 @@ function createCutoutCensoredPreviewFromImageSource(source, poseMetrics, maxSize
   canvas.height = height;
   context.drawImage(source, 0, 0, width, height);
 
-  const imageData = context.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  const sampleBackground = (x, y) => {
-    const index = (Math.min(Math.max(y, 0), height - 1) * width + Math.min(Math.max(x, 0), width - 1)) * 4;
-    return [data[index], data[index + 1], data[index + 2]];
-  };
-  const corners = [
-    sampleBackground(0, 0),
-    sampleBackground(width - 1, 0),
-    sampleBackground(0, height - 1),
-    sampleBackground(width - 1, height - 1),
-  ];
-  const background = [0, 1, 2].map((channel) =>
-    corners.reduce((sum, color) => sum + color[channel], 0) / corners.length,
-  );
-  const backgroundLum = background[0] * 0.299 + background[1] * 0.587 + background[2] * 0.114;
+  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
   const poseBounds = getPoseBounds(poseMetrics);
 
-  if (poseBounds) {
-    for (let index = 0; index < data.length; index += 4) {
-      const pixel = index / 4;
-      const x = pixel % width;
-      const y = Math.floor(pixel / width);
-      const normalizedX = x / width;
-      const normalizedY = y / height;
-      const inPoseBounds =
-        normalizedX >= poseBounds.minX &&
-        normalizedX <= poseBounds.maxX &&
-        normalizedY >= poseBounds.minY &&
-        normalizedY <= poseBounds.maxY;
-      const distance = Math.hypot(data[index] - background[0], data[index + 1] - background[1], data[index + 2] - background[2]);
-      const luminance = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
-      const foreground = inPoseBounds && (distance > 28 || Math.abs(luminance - backgroundLum) > 24);
+  if (poseBounds && landmarks.length) {
+    const maskCanvas = document.createElement("canvas");
+    const maskContext = maskCanvas.getContext("2d");
+    const point = (index) => {
+      const landmark = landmarks[index];
 
-      if (!foreground) {
-        data[index + 3] = 0;
+      return landmark ? { x: landmark.x * width, y: landmark.y * height } : null;
+    };
+    const drawLimb = (first, second, strokeWidth) => {
+      if (!first || !second) {
+        return;
       }
+
+      maskContext.lineWidth = strokeWidth;
+      maskContext.beginPath();
+      maskContext.moveTo(first.x, first.y);
+      maskContext.lineTo(second.x, second.y);
+      maskContext.stroke();
+    };
+
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    maskContext.fillStyle = "#ffffff";
+    maskContext.strokeStyle = "#ffffff";
+    maskContext.lineCap = "round";
+    maskContext.lineJoin = "round";
+
+    const nose = point(0);
+    const leftShoulder = point(11);
+    const rightShoulder = point(12);
+    const leftElbow = point(13);
+    const rightElbow = point(14);
+    const leftWrist = point(15);
+    const rightWrist = point(16);
+    const leftHip = point(23);
+    const rightHip = point(24);
+    const leftKnee = point(25);
+    const rightKnee = point(26);
+    const leftAnkle = point(27);
+    const rightAnkle = point(28);
+    const shoulderWidth = leftShoulder && rightShoulder
+      ? Math.abs(rightShoulder.x - leftShoulder.x)
+      : width * 0.22;
+    const torsoWidth = Math.max(shoulderWidth * 0.72, width * 0.09);
+    const limbWidth = Math.max(shoulderWidth * 0.22, width * 0.035);
+    const legWidth = Math.max(shoulderWidth * 0.28, width * 0.045);
+
+    if (nose) {
+      maskContext.beginPath();
+      maskContext.ellipse(nose.x, nose.y + shoulderWidth * 0.12, shoulderWidth * 0.42, shoulderWidth * 0.52, 0, 0, Math.PI * 2);
+      maskContext.fill();
     }
 
-    context.putImageData(imageData, 0, 0);
+    if (leftShoulder && rightShoulder && leftHip && rightHip) {
+      maskContext.beginPath();
+      maskContext.moveTo(leftShoulder.x - torsoWidth * 0.18, leftShoulder.y);
+      maskContext.lineTo(rightShoulder.x + torsoWidth * 0.18, rightShoulder.y);
+      maskContext.lineTo(rightHip.x + torsoWidth * 0.28, rightHip.y);
+      maskContext.lineTo(leftHip.x - torsoWidth * 0.28, leftHip.y);
+      maskContext.closePath();
+      maskContext.fill();
+    }
+
+    drawLimb(leftShoulder, leftElbow, limbWidth);
+    drawLimb(leftElbow, leftWrist, limbWidth);
+    drawLimb(rightShoulder, rightElbow, limbWidth);
+    drawLimb(rightElbow, rightWrist, limbWidth);
+    drawLimb(leftHip, leftKnee, legWidth);
+    drawLimb(leftKnee, leftAnkle, legWidth);
+    drawLimb(rightHip, rightKnee, legWidth);
+    drawLimb(rightKnee, rightAnkle, legWidth);
+
+    context.save();
+    context.globalCompositeOperation = "destination-in";
+    context.drawImage(maskCanvas, 0, 0);
+    context.restore();
+  } else if (poseBounds) {
+    context.save();
+    context.globalCompositeOperation = "destination-in";
+    context.fillStyle = "#ffffff";
+    context.fillRect(
+      poseBounds.minX * width,
+      poseBounds.minY * height,
+      (poseBounds.maxX - poseBounds.minX) * width,
+      (poseBounds.maxY - poseBounds.minY) * height,
+    );
+    context.restore();
   }
 
-  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
   const nose = landmarks[0];
 
   if (!nose) {

@@ -52,7 +52,7 @@ function PhotoUploadPanel({ photos, uploadStatus, onRetake, onUploadPhoto }) {
                 {preview ? (
                   <div className="relative">
                     <img
-                      className="aspect-[4/3] w-full bg-stone-950 object-contain"
+                      className="tiq-cutout-preview-bg aspect-[4/3] w-full object-contain"
                       src={preview}
                       alt={`${label} upload preview`}
                     />

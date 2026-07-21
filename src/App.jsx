@@ -2857,7 +2857,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
             {availablePhotoViews.map((photo) => (
               <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
                 <div className="relative">
-                  <img src={photo.preview} alt={`${photo.view} preview`} className="h-64 w-full bg-stone-950 object-contain" />
+                  <img src={photo.preview} alt={`${photo.view} preview`} className="tiq-cutout-preview-bg h-64 w-full object-contain" />
                   {photo.isCensored && (
                     <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
                       Background removed
