@@ -536,14 +536,7 @@ html[data-theme="dark"] {
   }
 
   .tiq-cutout-preview-bg {
-    background-color: #f7f4ec;
-    background-image:
-      linear-gradient(45deg, rgb(0 0 4 / 0.06) 25%, transparent 25%),
-      linear-gradient(-45deg, rgb(0 0 4 / 0.06) 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, rgb(0 0 4 / 0.06) 75%),
-      linear-gradient(-45deg, transparent 75%, rgb(0 0 4 / 0.06) 75%);
-    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-    background-size: 20px 20px;
+    background-color: #0c0a09;
   }
 
   .tiq-self-capture-animation {

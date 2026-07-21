@@ -253,7 +253,7 @@ function GuidedCapturePanel({
     }
 
     setIsSelfCountdownRunning(true);
-  }, [countdown, isCaptureCoolingDown, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
+  }, [captureSessionKey, countdown, isCaptureCoolingDown, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
 
   useEffect(() => {
     setCountdown(null);

@@ -737,6 +737,10 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setCaptureSessionKey((currentKey) => currentKey + 1);
     setCameraFeedback("");
     setError("");
+    if (["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
+      cameraAutoStartRequestedRef.current = false;
+      capture.stopCamera();
+    }
     capture.retakePhoto(view);
     if (isClientMode || ["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
       setActiveStep("photos");
@@ -842,6 +846,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
         {currentStep === "photos" && (
           <GuidedCapturePanel
+            key={`${captureInputMode}-${capture.activeCapture}-${captureSessionKey}`}
             activeCapture={capture.activeCapture}
             allGuidelinesPassed={capture.allGuidelinesPassed}
             canvasRef={capture.canvasRef}
