@@ -406,7 +406,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
         ? [{ id: "clientSetup", label: "Phone setup", done: activeStep === "photos" || hasPhotos }]
         : []),
       { id: "photos", label: "Photos", done: hasPhotos },
-      ...(isClientMode ? [{ id: "photoReview", label: "Photo review", done: hasPhotos && activeStep !== "photos" }] : []),
+      { id: "photoReview", label: "Photo review", done: hasPhotos && activeStep !== "photos" },
       ...(needsReference ? [{ id: "reference", label: "Reference mark", done: hasReferenceCalibration }] : []),
       { id: "review", label: isProcessing ? "Processing" : "Review", done: false },
     ],
