@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Form from "./components/Form";
-import MeasurementGuide from "./components/MeasurementGuide";
 import resultGuideFemale from "./assets/images/result-guide-female-cutout.png";
 import resultGuideMale from "./assets/images/result-guide-male-cutout.png";
 import { preventNumberInputWheel } from "./components/measurement/constants";
@@ -1756,7 +1755,25 @@ function ManualMeasurementForm({ onBack, onSaveManual }) {
   });
   const [error, setError] = useState("");
   const [openSections, setOpenSections] = useState({});
+  const [guideUnit, setGuideUnit] = useState(values.measurementUnit);
+  const [selectedGuideMeasurementIndex, setSelectedGuideMeasurementIndex] = useState(0);
   const activeProfile = getProfile(values.measurementProfile);
+  const manualGuideMeasurements = useMemo(() => {
+    return activeProfile.sections.flatMap((section) =>
+      section.fields.map((field) => {
+        const enteredValue = Number(values[field.key]);
+        const hasEnteredValue = Number.isFinite(enteredValue) && enteredValue > 0;
+
+        return {
+          fieldKey: field.key,
+          label: field.label,
+          valueCm: hasEnteredValue ? roundHalf(toCm(enteredValue, values.measurementUnit)) : 0,
+          note: field.note,
+          group: section.title,
+        };
+      }),
+    );
+  }, [activeProfile, values]);
   const toggleSection = (sectionTitle) => {
     setOpenSections((currentSections) => ({
       ...currentSections,
@@ -1766,6 +1783,12 @@ function ManualMeasurementForm({ onBack, onSaveManual }) {
 
   const handleChange = (event) => {
     setValues({ ...values, [event.target.name]: event.target.value });
+    if (event.target.name === "measurementUnit") {
+      setGuideUnit(event.target.value);
+    }
+    if (event.target.name === "measurementProfile") {
+      setSelectedGuideMeasurementIndex(0);
+    }
     setError("");
   };
 
@@ -1888,28 +1911,57 @@ function ManualMeasurementForm({ onBack, onSaveManual }) {
         </div>
 
         <div>
-          <label className="text-sm font-medium text-stone-700" htmlFor="manual-profile">
+          <p className="text-sm font-medium text-stone-700" id="manual-profile-label">
             Gender*
-          </label>
-          <select
-            className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-            id="manual-profile"
-            name="measurementProfile"
-            value={values.measurementProfile}
-            onChange={handleChange}
+          </p>
+          <div
+            className="tiq-segmented mt-2 grid grid-cols-2 overflow-hidden rounded-full p-0.5"
+            role="radiogroup"
+            aria-labelledby="manual-profile-label"
           >
             {profileOptions.map((profile) => (
-              <option key={profile.id} value={profile.id}>
+              <button
+                key={profile.id}
+                type="button"
+                role="radio"
+                aria-checked={values.measurementProfile === profile.id}
+                onClick={() => {
+                  setValues((currentValues) => ({
+                    ...currentValues,
+                    measurementProfile: profile.id,
+                  }));
+                  setSelectedGuideMeasurementIndex(0);
+                  setError("");
+                }}
+                className={`min-h-10 rounded-full px-3 text-sm font-semibold transition ${
+                  values.measurementProfile === profile.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
+                }`}
+              >
                 {profile.label}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
-        <MeasurementGuide profileId={values.measurementProfile} />
+        <ResultBodyGuide
+          measurements={manualGuideMeasurements}
+          profileId={values.measurementProfile}
+          unit={guideUnit}
+          onUnitChange={(nextUnit) => {
+            setGuideUnit(nextUnit);
+            setValues((currentValues) => ({
+              ...currentValues,
+              measurementUnit: nextUnit,
+            }));
+          }}
+          selectedIndex={selectedGuideMeasurementIndex}
+          onSelect={setSelectedGuideMeasurementIndex}
+          title="Measurement Guide"
+          compact
+        />
 
-        <div className="overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
-          <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-stone-200 bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+          <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-stone-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-stone-950">{activeProfile.label} measurement sheet</p>
               <p className="mt-1 text-sm text-stone-500">{activeProfile.description}</p>
@@ -1926,7 +1978,7 @@ function ManualMeasurementForm({ onBack, onSaveManual }) {
             </select>
           </div>
 
-          <div className="space-y-4 p-4">
+          <div className="space-y-4 bg-stone-50 p-4">
             {activeProfile.sections.map((section) => {
               const isOpen = openSections[section.title] ?? true;
 
@@ -2340,7 +2392,7 @@ function ResultGuideLine({ mark }) {
   return <circle cx={mark.cx} cy={mark.cy} r={mark.r} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeDasharray="2 2" />;
 }
 
-function ResultBodyGuide({ measurements, profileId, unit, onUnitChange, selectedIndex, onSelect, title, resultDate }) {
+function ResultBodyGuide({ measurements, profileId, unit, onUnitChange, selectedIndex, onSelect, title, resultDate, compact = false }) {
   const [hasSelectedMarker, setHasSelectedMarker] = useState(false);
   const [highlightKey, setHighlightKey] = useState(0);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -2387,7 +2439,9 @@ function ResultBodyGuide({ measurements, profileId, unit, onUnitChange, selected
   };
 
   return (
-    <div className="tiq-result-surface -mx-4 mt-5 overflow-hidden border text-stone-950 shadow-lg sm:-mx-6 lg:-mx-10">
+    <div className={`tiq-result-surface tiq-result-surface-light mt-5 overflow-hidden border text-stone-950 shadow-lg ${
+      compact ? "rounded-lg" : "-mx-4 sm:-mx-6 lg:-mx-10"
+    }`}>
       <div className="relative min-h-[42rem] overflow-hidden px-4 pb-4 pt-5 sm:min-h-[48rem] sm:px-7 sm:pt-7 lg:min-h-[45rem]">
         <div className="pointer-events-none absolute inset-y-0 right-0 w-[44%] opacity-65">
           <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,159,0,0.22)_52%,transparent_53%),linear-gradient(60deg,transparent_0%,rgba(0,0,4,0.12)_44%,transparent_45%)] bg-[size:34px_42px]" />
@@ -2469,7 +2523,7 @@ function ResultBodyGuide({ measurements, profileId, unit, onUnitChange, selected
         </div>
 
         {showInfoPanel && (
-          <div className="absolute inset-x-4 bottom-4 z-40 rounded-lg border border-[#FF9F00]/40 bg-[#111111]/95 p-4 text-white shadow-2xl backdrop-blur sm:inset-x-8 sm:bottom-6">
+          <div className="absolute inset-x-4 top-32 z-40 rounded-lg border border-[#FF9F00]/40 bg-[#111111]/95 p-4 text-white shadow-2xl backdrop-blur sm:left-auto sm:right-8 sm:top-36 sm:w-[26rem]">
             <p className="text-sm font-semibold">{selected.measurement.label}: {value}</p>
             <p className="mt-2 text-sm leading-6 text-white/95">{selected.mark.instruction}</p>
           </div>
@@ -3113,8 +3167,9 @@ function App() {
 
     setReviewDraft(draftCustomer);
     setMeasurementDrafts((currentDrafts) => {
-      const filteredDrafts = activeMeasurementDraftId
-        ? currentDrafts.filter((draft) => draft.id !== activeMeasurementDraftId)
+      const captureDraftId = activeMeasurementDraftId || recordData.captureDraftId;
+      const filteredDrafts = captureDraftId
+        ? currentDrafts.filter((draft) => draft.id !== captureDraftId)
         : currentDrafts;
       const reviewDraft = normalizeDraft({
         id: reviewDraftId,
@@ -3145,10 +3200,6 @@ function App() {
         id: draftId,
         createdAt: existingDraft?.createdAt || draft.createdAt,
       });
-
-      if (!activeMeasurementDraftId) {
-        setActiveMeasurementDraftId(draftId);
-      }
 
       const nextDrafts = existingDraft
         ? currentDrafts.map((currentDraft) => (currentDraft.id === draftId ? nextDraft : currentDraft))

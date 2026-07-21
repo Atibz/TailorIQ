@@ -555,6 +555,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
       setError("");
       await onSubmitCustomer({
         ...values,
+        captureDraftId: draftId,
         fullname: values.fullname.trim(),
         referenceCalibration,
         referenceCalibratedHeightCm: referenceCalibration?.calibratedHeightCm || "",

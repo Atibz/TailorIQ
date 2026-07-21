@@ -913,6 +913,46 @@ html[data-theme="dark"] {
         radial-gradient(circle at 86% 20%, rgb(17 17 17 / 0.2), transparent 28%),
         linear-gradient(145deg, #fff8e1 0%, #f7f4ec 42%, #d9bd78 100%) !important;
     }
+
+    .tiq-result-surface-light {
+      color: #000004 !important;
+      border-color: rgb(255 159 0 / 0.35) !important;
+      background:
+        radial-gradient(circle at 18% 18%, rgb(255 159 0 / 0.24), transparent 28%),
+        radial-gradient(circle at 88% 12%, rgb(17 17 17 / 0.16), transparent 24%),
+        linear-gradient(135deg, #fff8e1 0%, #f7f4ec 42%, #f1e0b5 100%) !important;
+    }
+
+    .tiq-result-surface-light::before {
+      background:
+        linear-gradient(rgb(0 0 4 / 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(0 0 4 / 0.06) 1px, transparent 1px),
+        repeating-linear-gradient(90deg, transparent 0 28px, rgb(255 159 0 / 0.18) 28px 30px) !important;
+      opacity: 0.72 !important;
+    }
+
+    .tiq-result-surface-light::after {
+      border-color: rgb(255 159 0 / 0.28) !important;
+      background:
+        conic-gradient(from 210deg, transparent 0deg, rgb(255 159 0 / 0.28) 72deg, transparent 132deg),
+        radial-gradient(circle, transparent 58%, rgb(0 0 4 / 0.1) 59%, transparent 63%) !important;
+      opacity: 0.88 !important;
+    }
+
+    .tiq-result-surface-light .bg-white\/80,
+    .tiq-result-surface-light .group:hover .group-hover\:bg-white {
+      background-color: rgb(255 255 255 / 0.8) !important;
+    }
+
+    .tiq-result-surface-light .text-stone-500 {
+      color: #78716c !important;
+    }
+
+    .tiq-result-surface-light .text-stone-600,
+    .tiq-result-surface-light .text-stone-700,
+    .tiq-result-surface-light .text-stone-950 {
+      color: #000004 !important;
+    }
   }
 }
 
