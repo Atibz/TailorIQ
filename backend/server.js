@@ -282,7 +282,7 @@ function isPlausibleWidthDepth(sample, expectedWidth) {
   );
 }
 
-function chooseCircumference({ silhouetteSample, poseValue, baselineValue, expectedWidth, tolerance = 0.18 }) {
+function chooseCircumference({ silhouetteSample, poseValue, baselineValue, expectedWidth, tolerance = 0.18, maxFallbackDelta = 3.5 }) {
   const fallbackValue = clampValue(
     blendValues(poseValue, baselineValue, 0.56),
     baselineValue - Math.max(baselineValue * 0.09, 6),
@@ -300,7 +300,13 @@ function chooseCircumference({ silhouetteSample, poseValue, baselineValue, expec
       baselineValue + Math.max(baselineValue * 0.1, 7),
     );
 
-    return silhouetteValue < fallbackValue - 2 ? fallbackValue : silhouetteValue;
+    const fallbackDelta = silhouetteValue - fallbackValue;
+
+    if (Math.abs(fallbackDelta) > maxFallbackDelta) {
+      return fallbackValue + Math.sign(fallbackDelta) * maxFallbackDelta;
+    }
+
+    return silhouetteValue;
   }
 
   return fallbackValue;
@@ -852,9 +858,9 @@ function buildMeasurements(payload, captureWarnings = []) {
   const poseWaist = waistWidth * (profile === "female" ? 2.35 : 2.45) + 0.5;
   const poseHip = hipWidth * (profile === "female" ? 2.9 : 2.75) + 0.5;
   const acceptedSilhouette = {
-    chest: silhouette?.chest && isPlausibleWidthDepth(silhouette.chest, chestWidth) && isPlausibleCircumference(silhouette.chest.circumferenceCm, baseline.chest),
-    waist: silhouette?.waist && isPlausibleWidthDepth(silhouette.waist, waistWidth) && isPlausibleCircumference(silhouette.waist.circumferenceCm, baseline.waist, 0.16),
-    hip: silhouette?.hip && isPlausibleWidthDepth(silhouette.hip, hipWidth) && isPlausibleCircumference(silhouette.hip.circumferenceCm, baseline.hip),
+    chest: Boolean(silhouette?.chest && isPlausibleWidthDepth(silhouette.chest, chestWidth) && isPlausibleCircumference(silhouette.chest.circumferenceCm, baseline.chest)),
+    waist: Boolean(silhouette?.waist && isPlausibleWidthDepth(silhouette.waist, waistWidth) && isPlausibleCircumference(silhouette.waist.circumferenceCm, baseline.waist, 0.16)),
+    hip: Boolean(silhouette?.hip && isPlausibleWidthDepth(silhouette.hip, hipWidth) && isPlausibleCircumference(silhouette.hip.circumferenceCm, baseline.hip)),
   };
   const generatedChest = roundHalf(
     hasPoseMetrics
