@@ -104,12 +104,12 @@ function GuidedCapturePanel({
   captureSessionKey = 0,
 }) {
   const [countdown, setCountdown] = useState(null);
-  const [isSelfCountdownRunning, setIsSelfCountdownRunning] = useState(false);
+  const [capturePhase, setCapturePhase] = useState("checking");
   const [captureFlashKey, setCaptureFlashKey] = useState(0);
-  const [isCaptureCoolingDown, setIsCaptureCoolingDown] = useState(false);
   const lastSpokenInstructionRef = useRef("");
   const lastSpokenAtRef = useRef(0);
   const capturePhotoRef = useRef(capturePhoto);
+  const capturePhaseRef = useRef("checking");
   const isCameraCapture = inputMode === "camera";
   const isSelfCapture = captureMode === "self";
   const isReadyToCapture = isCameraCapture && isCameraActive && allGuidelinesPassed;
@@ -122,9 +122,9 @@ function GuidedCapturePanel({
   const isSelfFrameReady = isReadyToCapture;
   const showCaptureButton = isSelfCapture
     ? false
-    : isReadyToCapture;
+    : isReadyToCapture && !["capturing", "cooldown"].includes(capturePhase);
   const isGuideReady = isSelfCapture ? isSelfFrameReady : isReadyToCapture;
-  const centerReading = isSelfCountdownRunning && countdown !== null
+  const centerReading = capturePhase === "counting" && countdown !== null
     ? countdown
     : isSelfCapture
       ? selfAlignmentScore
@@ -135,11 +135,15 @@ function GuidedCapturePanel({
   }, [capturePhoto]);
 
   useEffect(() => {
+    capturePhaseRef.current = capturePhase;
+  }, [capturePhase]);
+
+  useEffect(() => {
     if (!isCameraCapture || typeof window === "undefined" || !window.speechSynthesis) {
       return undefined;
     }
 
-    if (!isCameraActive || isReadyToCapture) {
+    if (!isCameraActive || isReadyToCapture || capturePhase !== "checking") {
       window.speechSynthesis.cancel();
       return undefined;
     }
@@ -169,10 +173,10 @@ function GuidedCapturePanel({
     const speechTimer = window.setInterval(speakInstruction, isSelfCapture ? 2500 : 5500);
 
     return () => window.clearInterval(speechTimer);
-  }, [isCameraActive, isCameraCapture, isReadyToCapture, isSelfCapture, poseMessage]);
+  }, [capturePhase, isCameraActive, isCameraCapture, isReadyToCapture, isSelfCapture, poseMessage]);
 
   useEffect(() => {
-    if (!isSelfCapture || !isSelfFrameReady || !isSelfCountdownRunning) {
+    if (!isSelfCapture || !isSelfFrameReady || capturePhase !== "speaking") {
       return undefined;
     }
 
@@ -202,10 +206,18 @@ function GuidedCapturePanel({
       }
 
       hasStartedCountdown = true;
+      setCapturePhase("counting");
       setCountdown(remaining);
 
       countdownTimer = window.setInterval(() => {
         remaining -= 1;
+
+        if (!isSelfFrameReady) {
+          window.clearInterval(countdownTimer);
+          setCountdown(null);
+          setCapturePhase("checking");
+          return;
+        }
 
         if (remaining > 0) {
           setCountdown(remaining);
@@ -215,15 +227,19 @@ function GuidedCapturePanel({
 
         window.clearInterval(countdownTimer);
         setCountdown(0);
+        setCapturePhase("capturing");
         speak("Capturing now.");
         captureTimer = window.setTimeout(() => {
-          setIsCaptureCoolingDown(true);
           setCaptureFlashKey((currentKey) => currentKey + 1);
           playCaptureSound();
           capturePhotoRef.current?.();
           setCountdown(null);
-          setIsSelfCountdownRunning(false);
-          window.setTimeout(() => setIsCaptureCoolingDown(false), 1800);
+          setCapturePhase("cooldown");
+          window.setTimeout(() => {
+            if (capturePhaseRef.current === "cooldown") {
+              setCapturePhase("checking");
+            }
+          }, 1800);
         }, 250);
       }, 1000);
     };
@@ -245,20 +261,19 @@ function GuidedCapturePanel({
       window.clearTimeout(captureTimer);
       window.clearInterval(countdownTimer);
     };
-  }, [activeCapture, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
+  }, [activeCapture, capturePhase, isSelfCapture, isSelfFrameReady]);
 
   useEffect(() => {
-    if (!isSelfCapture || !isSelfFrameReady || isSelfCountdownRunning || countdown !== null || isCaptureCoolingDown) {
+    if (!isSelfCapture || !isSelfFrameReady || capturePhase !== "checking") {
       return;
     }
 
-    setIsSelfCountdownRunning(true);
-  }, [captureSessionKey, countdown, isCaptureCoolingDown, isSelfCapture, isSelfCountdownRunning, isSelfFrameReady]);
+    setCapturePhase("speaking");
+  }, [capturePhase, captureSessionKey, isSelfCapture, isSelfFrameReady]);
 
   useEffect(() => {
     setCountdown(null);
-    setIsSelfCountdownRunning(false);
-    setIsCaptureCoolingDown(false);
+    setCapturePhase("checking");
     lastSpokenInstructionRef.current = "";
     lastSpokenAtRef.current = 0;
 
@@ -268,11 +283,11 @@ function GuidedCapturePanel({
   }, [activeCapture, captureSessionKey]);
 
   useEffect(() => {
-    if (!isSelfFrameReady && isSelfCountdownRunning) {
+    if (!isSelfFrameReady && ["speaking", "counting"].includes(capturePhase)) {
       setCountdown(null);
-      setIsSelfCountdownRunning(false);
+      setCapturePhase("checking");
     }
-  }, [isSelfCountdownRunning, isSelfFrameReady]);
+  }, [capturePhase, isSelfFrameReady]);
 
   useEffect(() => {
     return () => {
@@ -368,7 +383,7 @@ function GuidedCapturePanel({
               type="button"
               onClick={() => {
                 if (isSelfCapture) {
-                  setIsSelfCountdownRunning(true);
+                  setCapturePhase("speaking");
                   return;
                 }
 
