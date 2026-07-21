@@ -602,6 +602,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
   const startCamera = async () => {
     setError("");
+    lastVideoTimeRef.current = -1;
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("Camera is not available in this browser.");
@@ -651,6 +652,11 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
       if (poseResult[0].status === "fulfilled") {
         poseLandmarkerRef.current = poseResult[0].value;
+        lastVideoTimeRef.current = -1;
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        animationFrameRef.current = requestAnimationFrame(detectPose);
         setPoseMessage("Move into the guide so the pose model can validate the frame");
       } else {
         setPoseStatus("Pose model could not load");
@@ -673,6 +679,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    lastVideoTimeRef.current = -1;
     setIsCameraActive(false);
     setPoseMessage("Start the camera to begin automatic checks");
   };
