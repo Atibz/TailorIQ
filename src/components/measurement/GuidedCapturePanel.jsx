@@ -112,6 +112,7 @@ function GuidedCapturePanel({
   const capturePhotoRef = useRef(capturePhoto);
   const isSelfFrameReadyRef = useRef(false);
   const selfCountdownTokenRef = useRef("");
+  const cameraStartTokenRef = useRef("");
   const isCameraCapture = inputMode === "camera";
   const isSelfCapture = captureMode === "self";
   const isReadyToCapture = isCameraCapture && isCameraActive && allGuidelinesPassed;
@@ -139,6 +140,29 @@ function GuidedCapturePanel({
   useEffect(() => {
     isSelfFrameReadyRef.current = isSelfFrameReady;
   }, [isSelfFrameReady]);
+
+  useEffect(() => {
+    if (!isCameraCapture) {
+      cameraStartTokenRef.current = "";
+      return undefined;
+    }
+
+    if (isCameraActive) {
+      return undefined;
+    }
+
+    const cameraStartToken = `${inputMode}:${captureSessionKey}:${activeCapture}`;
+    if (cameraStartTokenRef.current === cameraStartToken) {
+      return undefined;
+    }
+
+    cameraStartTokenRef.current = cameraStartToken;
+    const startTimer = window.setTimeout(() => {
+      startCamera?.();
+    }, 80);
+
+    return () => window.clearTimeout(startTimer);
+  }, [activeCapture, captureSessionKey, inputMode, isCameraActive, isCameraCapture, startCamera]);
 
   useEffect(() => {
     if (!isCameraCapture || typeof window === "undefined" || !window.speechSynthesis) {

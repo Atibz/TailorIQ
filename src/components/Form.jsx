@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useMeasurementCapture } from "../hooks/useMeasurementCapture";
 import CaptureStandingGuide from "./measurement/CaptureStandingGuide";
 import CustomerDetailsFields from "./measurement/CustomerDetailsFields";
@@ -367,8 +367,6 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
   const [cameraFeedback, setCameraFeedback] = useState("");
   const [retakeTargetView, setRetakeTargetView] = useState("");
   const [captureSessionKey, setCaptureSessionKey] = useState(0);
-  const cameraAutoStartRequestedRef = useRef(false);
-  const startCameraRef = useRef(null);
   const capture = useMeasurementCapture({
     initialPhotos: initialDraft?.photos,
     referenceObject: values.referenceObject,
@@ -653,28 +651,6 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
-  useEffect(() => {
-    startCameraRef.current = capture.startCamera;
-  }, [capture.startCamera]);
-
-  useEffect(() => {
-    if (currentStep !== "photos" || !["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
-      cameraAutoStartRequestedRef.current = false;
-      return undefined;
-    }
-
-    if (cameraAutoStartRequestedRef.current || isCameraActive) {
-      return undefined;
-    }
-
-    cameraAutoStartRequestedRef.current = true;
-    const startTimer = window.setTimeout(() => {
-      startCameraRef.current?.();
-    }, 120);
-
-    return () => window.clearTimeout(startTimer);
-  }, [captureInputMode, captureSessionKey, currentStep, isCameraActive]);
-
   const movePastPhotoStep = () => {
     const photoStepIndex = stepOrder.findIndex((step) => step.id === "photos");
     const nextStep = stepOrder[Math.min(photoStepIndex + 1, stepOrder.length - 1)];
@@ -740,7 +716,6 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setCameraFeedback("");
     setError("");
     if (["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
-      cameraAutoStartRequestedRef.current = false;
       capture.stopCamera();
     }
     capture.retakePhoto(view);
