@@ -846,7 +846,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
         {currentStep === "photos" && (
           <GuidedCapturePanel
-            key={`${captureInputMode}-${capture.activeCapture}-${captureSessionKey}`}
+            key={`${captureInputMode}-${captureSessionKey}`}
             activeCapture={capture.activeCapture}
             allGuidelinesPassed={capture.allGuidelinesPassed}
             canvasRef={capture.canvasRef}
