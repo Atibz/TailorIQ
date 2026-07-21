@@ -647,6 +647,9 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     if (mode === "self-camera") {
       unlockSpeechGuidance("Audio guidance enabled. Set your phone down, then continue when you are ready.");
     }
+    if (["camera", "friend-camera"].includes(mode)) {
+      capture.startCamera({ facingMode: "environment" });
+    }
     setActiveStep(isClientMode && mode === "self-camera" ? "clientSetup" : "photos");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
@@ -730,7 +733,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
     if (["camera", "friend-camera"].includes(captureInputMode)) {
       capture.stopCamera();
-      capture.retakePhotoWithCamera(view);
+      capture.retakePhotoWithCamera(view, { facingMode: "environment" });
     } else {
       capture.retakePhoto(view);
     }

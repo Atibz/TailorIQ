@@ -237,8 +237,13 @@ function createCroppedCensoredPreviewFromImageSource(source, poseMetrics, maxSiz
   const shoulderWidthPx = leftShoulder && rightShoulder
     ? Math.abs(rightShoulder.x - leftShoulder.x) * sourceWidth * scale
     : width * 0.18;
-  const censorWidth = Math.min(Math.max(shoulderWidthPx * 0.52, width * 0.1), width * 0.24);
-  const censorHeight = censorWidth * 0.72;
+  const bodyHeightPx = poseMetrics?.bodyHeightRatio
+    ? poseMetrics.bodyHeightRatio * sourceHeight * scale
+    : height * 0.82;
+  const headBasedWidth = bodyHeightPx * 0.095;
+  const shoulderBasedWidth = shoulderWidthPx * 0.58;
+  const censorWidth = Math.min(Math.max(shoulderBasedWidth, headBasedWidth, width * 0.12), width * 0.28);
+  const censorHeight = censorWidth * 0.82;
   const noseX = (nose.x * sourceWidth - cropX) * scale;
   const noseY = (nose.y * sourceHeight - cropY) * scale;
   const x = Math.min(Math.max(noseX - censorWidth / 2, 0), width - censorWidth);
@@ -629,13 +634,14 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     animationFrameRef.current = requestAnimationFrame(detectPose);
   };
 
-  const startCamera = async () => {
+  const startCamera = async (options = {}) => {
     if (isCameraStartingRef.current) {
       return;
     }
 
     setError("");
     lastVideoTimeRef.current = -1;
+    const requestedFacingMode = options.facingMode || cameraFacingModeRef.current;
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("Camera is not available in this browser.");
@@ -647,7 +653,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       const stream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: cameraFacingModeRef.current },
+            facingMode: { ideal: requestedFacingMode },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
@@ -708,9 +714,9 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     }
   };
 
-  const retakePhotoWithCamera = async (view) => {
+  const retakePhotoWithCamera = async (view, options = {}) => {
     retakePhoto(view);
-    await startCamera();
+    await startCamera(options);
   };
 
   const stopCamera = () => {
