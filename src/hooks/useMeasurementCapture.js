@@ -473,6 +473,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const isCameraStartingRef = useRef(false);
   const poseLandmarkerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
@@ -512,6 +513,24 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   useEffect(() => {
     photosRef.current = photos;
   }, [photos]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || !streamRef.current || video.srcObject === streamRef.current) {
+      return;
+    }
+
+    video.srcObject = streamRef.current;
+    video.play?.().catch(() => {});
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    lastVideoTimeRef.current = -1;
+    animationFrameRef.current = requestAnimationFrame(detectPose);
+  });
 
   useEffect(() => {
     return () => {
@@ -601,6 +620,10 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   };
 
   const startCamera = async () => {
+    if (isCameraStartingRef.current) {
+      return;
+    }
+
     setError("");
     lastVideoTimeRef.current = -1;
 
@@ -610,14 +633,19 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: cameraFacingModeRef.current },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+      isCameraStartingRef.current = true;
+      const stream = await withTimeout(
+        navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: cameraFacingModeRef.current },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        }),
+        12000,
+        "Camera start timed out",
+      );
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
@@ -664,8 +692,15 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       }
     } catch {
       setIsCameraActive(false);
-      setError("Allow camera access in your browser.");
+      setError("Camera could not start. Allow camera access and try retake again.");
+    } finally {
+      isCameraStartingRef.current = false;
     }
+  };
+
+  const retakePhotoWithCamera = async (view) => {
+    retakePhoto(view);
+    await startCamera();
   };
 
   const stopCamera = () => {
@@ -676,6 +711,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    isCameraStartingRef.current = false;
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -842,6 +878,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     poseStatus,
     resetCapture,
     retakePhoto,
+    retakePhotoWithCamera,
     startCamera,
     stopCamera,
     uploadStatus,

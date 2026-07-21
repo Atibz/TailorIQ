@@ -717,8 +717,10 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     setError("");
     if (["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
       capture.stopCamera();
+      capture.retakePhotoWithCamera(view);
+    } else {
+      capture.retakePhoto(view);
     }
-    capture.retakePhoto(view);
     if (isClientMode || ["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
       setActiveStep("photos");
     }
