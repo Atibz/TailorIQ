@@ -673,7 +673,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }, 120);
 
     return () => window.clearTimeout(startTimer);
-  }, [captureInputMode, currentStep, isCameraActive]);
+  }, [captureInputMode, captureSessionKey, currentStep, isCameraActive]);
 
   const movePastPhotoStep = () => {
     const photoStepIndex = stepOrder.findIndex((step) => step.id === "photos");
@@ -718,6 +718,8 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
         movePastPhotoStep();
       }, 650);
     }
+
+    return captureResult;
   };
 
   const handleExitCamera = () => {
@@ -846,7 +848,6 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
         {currentStep === "photos" && (
           <GuidedCapturePanel
-            key={`${captureInputMode}-${captureSessionKey}`}
             activeCapture={capture.activeCapture}
             allGuidelinesPassed={capture.allGuidelinesPassed}
             canvasRef={capture.canvasRef}
