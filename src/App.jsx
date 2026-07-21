@@ -2540,7 +2540,6 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
   const [selectedMeasurementIndex, setSelectedMeasurementIndex] = useState(0);
   const [tailorUsername, setTailorUsername] = useState("");
   const [includePhotos, setIncludePhotos] = useState(false);
-  const [photoPreviewMode, setPhotoPreviewMode] = useState("original");
 
   if (!customer) {
     return null;
@@ -2556,18 +2555,17 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
   const availablePhotoViews = [
     {
       view: "Front view",
-      preview: customer.photoPreviews?.front,
-      silhouette: customer.photoSilhouettes?.front,
+      preview: customer.photoCensoredPreviews?.front || customer.photoPreviews?.front,
+      isCensored: Boolean(customer.photoCensoredPreviews?.front),
       fileName: customer.photoViews?.find((photo) => photo.view === "Front view")?.fileName,
     },
     {
       view: "Side view",
-      preview: customer.photoPreviews?.side,
-      silhouette: customer.photoSilhouettes?.side,
+      preview: customer.photoCensoredPreviews?.side || customer.photoPreviews?.side,
+      isCensored: Boolean(customer.photoCensoredPreviews?.side),
       fileName: customer.photoViews?.find((photo) => photo.view === "Side view")?.fileName,
     },
   ].filter((photo) => Boolean(photo.preview));
-  const hasPhotoSilhouettes = availablePhotoViews.some((photo) => Boolean(photo.silhouette));
   const groupedMeasurements = customer.measurements.reduce((groups, measurement) => {
     const group = measurement.group || getProfileLabel(customer.measurementProfile);
 
@@ -2852,49 +2850,26 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-stone-950">Photo previews</p>
-              <p className="mt-1 text-sm text-stone-500">Silhouette mode hides the original background, clothing details, and face details.</p>
+              <p className="mt-1 text-sm text-stone-500">Background is removed and the face is censored while the full-body shape remains visible.</p>
             </div>
-            {hasPhotoSilhouettes && (
-              <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
-                {[
-                  { id: "original", label: "Original" },
-                  { id: "silhouette", label: "Silhouette" },
-                ].map((mode) => (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => setPhotoPreviewMode(mode.id)}
-                    className={`min-h-8 rounded-full px-3 text-xs font-semibold transition ${
-                      photoPreviewMode === mode.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
-                    }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {availablePhotoViews.map((photo) => {
-              const displayPreview = photoPreviewMode === "silhouette" ? photo.silhouette || photo.preview : photo.preview;
-
-              return (
-                <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
-                  <div className="relative">
-                    <img src={displayPreview} alt={`${photo.view} preview`} className="h-64 w-full bg-stone-950 object-contain" />
-                    {photoPreviewMode === "silhouette" && photo.silhouette && (
-                      <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-                        Privacy silhouette
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-3">
-                  <p className="text-sm font-medium text-stone-900">{photo.view}</p>
-                    {photo.fileName && <p className="mt-1 break-words text-sm text-stone-500">{photo.fileName}</p>}
-                  </div>
+            {availablePhotoViews.map((photo) => (
+              <div key={photo.view} className="min-w-0 overflow-hidden rounded-md bg-stone-50">
+                <div className="relative">
+                  <img src={photo.preview} alt={`${photo.view} preview`} className="h-64 w-full bg-stone-950 object-contain" />
+                  {photo.isCensored && (
+                    <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                      Background removed
+                    </span>
+                  )}
                 </div>
-              );
-            })}
+                <div className="p-3">
+                <p className="text-sm font-medium text-stone-900">{photo.view}</p>
+                  {photo.fileName && <p className="mt-1 break-words text-sm text-stone-500">{photo.fileName}</p>}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -3086,6 +3061,8 @@ function App() {
     const customerToShare = {
       ...customer,
       photoPreviews: includePhotos ? customer.photoPreviews : undefined,
+      photoCensoredPreviews: includePhotos ? customer.photoCensoredPreviews : undefined,
+      photoSilhouettes: undefined,
     };
 
     setSharedMeasurements((currentShares) => [

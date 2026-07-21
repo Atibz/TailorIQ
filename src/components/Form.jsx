@@ -243,40 +243,18 @@ function SelfCaptureSetup() {
 }
 
 function ClientPhotoReview({ photos, onRetake }) {
-  const [previewMode, setPreviewMode] = useState("original");
-  const hasSilhouette = Boolean(photos.front?.silhouettePreview || photos.side?.silhouettePreview);
-
   return (
     <div className="space-y-4">
-      {hasSilhouette && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3">
-          <div>
-            <p className="text-sm font-semibold text-stone-950">Photo preview</p>
-            <p className="mt-1 text-xs text-stone-500">Original is shown first. Use silhouette only for privacy checks.</p>
-          </div>
-          <div className="tiq-segmented grid grid-cols-2 overflow-hidden rounded-full p-0.5">
-            {[
-              { id: "original", label: "Original" },
-              { id: "silhouette", label: "Silhouette" },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setPreviewMode(mode.id)}
-                className={`min-h-8 rounded-full px-3 text-xs font-semibold transition ${
-                  previewMode === mode.id ? "tiq-segmented-button-active" : "tiq-segmented-button"
-                }`}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
+      <div className="rounded-lg border border-stone-200 bg-white p-3">
+        <div>
+          <p className="text-sm font-semibold text-stone-950">Photo preview</p>
+          <p className="mt-1 text-xs text-stone-500">Background is removed and the face is censored. Full-body shape remains visible for review.</p>
         </div>
-      )}
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries({ front: "Front photo", side: "Side photo" }).map(([view, label]) => {
           const photo = photos[view];
-          const preview = previewMode === "silhouette" ? photo?.silhouettePreview || photo?.preview : photo?.preview;
+          const preview = photo?.censoredPreview || photo?.preview;
 
           return (
             <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -293,11 +271,9 @@ function ClientPhotoReview({ photos, onRetake }) {
               {preview ? (
                 <div className="relative">
                   <img className="aspect-[3/4] w-full bg-stone-950 object-contain" src={preview} alt={`${label} preview`} />
-                  {previewMode === "silhouette" && photo?.silhouettePreview && (
-                    <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
-                      Privacy silhouette
-                    </span>
-                  )}
+                  <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                    Background removed
+                  </span>
                 </div>
               ) : (
                 <div className="flex min-h-64 items-center justify-center bg-stone-50 px-4 text-center text-sm text-stone-500">
@@ -389,6 +365,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
   const [captureInputMode, setCaptureInputMode] = useState(initialDraft?.captureInputMode || "");
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraFeedback, setCameraFeedback] = useState("");
+  const [retakeTargetView, setRetakeTargetView] = useState("");
   const cameraAutoStartRequestedRef = useRef(false);
   const startCameraRef = useRef(null);
   const capture = useMeasurementCapture({
@@ -575,9 +552,9 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
           front: capture.photos.front?.preview,
           side: capture.photos.side?.preview,
         },
-        photoSilhouettes: {
-          front: capture.photos.front?.silhouettePreview,
-          side: capture.photos.side?.silhouettePreview,
+        photoCensoredPreviews: {
+          front: capture.photos.front?.censoredPreview,
+          side: capture.photos.side?.censoredPreview,
         },
         captureMethod: captureInputMode === "upload"
           ? "Uploaded photos"
@@ -707,15 +684,21 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
 
   const handleCameraCapture = () => {
     const capturedView = capture.activeCapture;
+    const otherViewHasPhoto = capturedView === "front" ? hasSidePhoto : hasFrontPhoto;
+    const isCompletingSingleRetake = retakeTargetView === capturedView && otherViewHasPhoto;
     const shouldAdvanceAfterCapture =
-      capturedView === "side" &&
+      (capturedView === "side" || isCompletingSingleRetake) &&
       capture.allGuidelinesPassed &&
       capture.videoRef.current?.readyState >= 2;
     const shouldShowSuccess =
       capture.allGuidelinesPassed &&
       capture.videoRef.current?.readyState >= 2;
 
-    capture.capturePhoto();
+    const captureResult = capture.capturePhoto({ advanceAfterFront: !isCompletingSingleRetake });
+
+    if (!captureResult?.ok) {
+      return;
+    }
 
     if (shouldShowSuccess) {
       setCameraFeedback(
@@ -727,6 +710,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }
 
     if (shouldAdvanceAfterCapture) {
+      setRetakeTargetView("");
       setTimeout(() => {
         setError("");
         capture.stopCamera();
@@ -748,8 +732,11 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
       setReferenceMarker(null);
     }
 
+    setRetakeTargetView(view);
+    setCameraFeedback("");
+    setError("");
     capture.retakePhoto(view);
-    if (isClientMode) {
+    if (isClientMode || ["camera", "self-camera", "friend-camera"].includes(captureInputMode)) {
       setActiveStep("photos");
     }
   };

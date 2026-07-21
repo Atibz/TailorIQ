@@ -206,7 +206,7 @@ function getPoseBounds(poseMetrics) {
   };
 }
 
-function createSilhouettePreviewFromImageSource(source, poseMetrics, maxSize = 900) {
+function createCutoutCensoredPreviewFromImageSource(source, poseMetrics, maxSize = 900) {
   const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
   const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
   const scale = Math.min(maxSize / sourceWidth, maxSize / sourceHeight, 1);
@@ -234,30 +234,67 @@ function createSilhouettePreviewFromImageSource(source, poseMetrics, maxSize = 9
   const background = [0, 1, 2].map((channel) =>
     corners.reduce((sum, color) => sum + color[channel], 0) / corners.length,
   );
-
-  const output = context.createImageData(width, height);
+  const backgroundLum = background[0] * 0.299 + background[1] * 0.587 + background[2] * 0.114;
   const poseBounds = getPoseBounds(poseMetrics);
 
-  for (let index = 0; index < data.length; index += 4) {
-    const pixel = index / 4;
-    const x = pixel % width;
-    const y = Math.floor(pixel / width);
-    const inPoseBounds = !poseBounds || (
-      x / width >= poseBounds.minX &&
-      x / width <= poseBounds.maxX &&
-      y / height >= poseBounds.minY &&
-      y / height <= poseBounds.maxY
-    );
-    const distance = Math.hypot(data[index] - background[0], data[index + 1] - background[1], data[index + 2] - background[2]);
-    const foreground = inPoseBounds && distance > 34;
+  if (poseBounds) {
+    for (let index = 0; index < data.length; index += 4) {
+      const pixel = index / 4;
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      const normalizedX = x / width;
+      const normalizedY = y / height;
+      const inPoseBounds =
+        normalizedX >= poseBounds.minX &&
+        normalizedX <= poseBounds.maxX &&
+        normalizedY >= poseBounds.minY &&
+        normalizedY <= poseBounds.maxY;
+      const distance = Math.hypot(data[index] - background[0], data[index + 1] - background[1], data[index + 2] - background[2]);
+      const luminance = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+      const foreground = inPoseBounds && (distance > 28 || Math.abs(luminance - backgroundLum) > 24);
 
-    output.data[index] = foreground ? 17 : 246;
-    output.data[index + 1] = foreground ? 17 : 244;
-    output.data[index + 2] = foreground ? 17 : 236;
-    output.data[index + 3] = 255;
+      if (!foreground) {
+        data[index + 3] = 0;
+      }
+    }
+
+    context.putImageData(imageData, 0, 0);
   }
 
-  context.putImageData(output, 0, 0);
+  const landmarks = Array.isArray(poseMetrics?.landmarks) ? poseMetrics.landmarks : [];
+  const nose = landmarks[0];
+
+  if (!nose) {
+    return canvas.toDataURL("image/png");
+  }
+
+  const leftShoulder = landmarks[11];
+  const rightShoulder = landmarks[12];
+  const shoulderWidthPx = leftShoulder && rightShoulder
+    ? Math.abs(rightShoulder.x - leftShoulder.x) * width
+    : width * 0.18;
+  const censorWidth = Math.min(Math.max(shoulderWidthPx * 0.52, width * 0.1), width * 0.24);
+  const censorHeight = censorWidth * 0.72;
+  const x = Math.min(Math.max(nose.x * width - censorWidth / 2, 0), width - censorWidth);
+  const y = Math.min(Math.max(nose.y * height - censorHeight * 0.52, 0), height - censorHeight);
+  const radius = Math.min(censorHeight, censorWidth) * 0.24;
+
+  context.save();
+  context.fillStyle = "rgba(0, 0, 4, 0.94)";
+  context.strokeStyle = "rgba(255, 159, 0, 0.9)";
+  context.lineWidth = Math.max(width * 0.003, 2);
+
+  if (context.roundRect) {
+    context.beginPath();
+    context.roundRect(x, y, censorWidth, censorHeight, radius);
+    context.fill();
+    context.stroke();
+  } else {
+    context.fillRect(x, y, censorWidth, censorHeight);
+    context.strokeRect(x, y, censorWidth, censorHeight);
+  }
+
+  context.restore();
 
   return canvas.toDataURL("image/png");
 }
@@ -674,7 +711,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
     setPoseMessage("Start the camera to begin automatic checks");
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = ({ advanceAfterFront = true } = {}) => {
     if (!allGuidelinesPassed) {
       setError(`Cannot capture yet: ${poseMessage}.`);
       return;
@@ -687,7 +724,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
 
     const poseMetrics = latestPoseMetricsRef.current;
     const preview = createPreviewFromImageSource(videoRef.current);
-    const silhouettePreview = createSilhouettePreviewFromImageSource(videoRef.current, poseMetrics);
+    const censoredPreview = createCutoutCensoredPreviewFromImageSource(videoRef.current, poseMetrics);
 
     setPhotos((currentPhotos) => ({
       ...currentPhotos,
@@ -695,14 +732,14 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
           view: captureLabels[activeCaptureRef.current],
           fileName: `${captureLabels[activeCaptureRef.current]} MediaPipe capture`,
           preview,
-          silhouettePreview,
+          censoredPreview,
           poseMetrics,
         },
     }));
 
     const capturedView = activeCaptureRef.current;
 
-    if (capturedView === "front") {
+    if (capturedView === "front" && advanceAfterFront) {
       window.setTimeout(() => {
         setActiveCapture("side");
       }, 1400);
@@ -762,7 +799,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
             view: captureLabels[view],
             fileName: `${captureLabels[view]} uploaded photo`,
             preview: createPreviewFromImageSource(image),
-            silhouettePreview: createSilhouettePreviewFromImageSource(image, poseMetrics),
+            censoredPreview: createCutoutCensoredPreviewFromImageSource(image, poseMetrics),
             poseMetrics,
           },
         };
@@ -797,6 +834,14 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       return { ...currentPhotos, [view]: null };
     });
     setUploadStatus((currentStatus) => ({ ...currentStatus, [view]: "" }));
+    latestPoseMetricsRef.current = null;
+    setGuidelines(getEmptyGuidelines(captureSettingsRef.current));
+    setPoseStatus(isCameraActive ? "Checking camera frame" : "Ready to retake");
+    setPoseMessage(
+      view === "front"
+        ? "Place the full front view inside the guide."
+        : "Turn to the side and keep the full body inside the guide.",
+    );
     setActiveCapture(view);
   };
 

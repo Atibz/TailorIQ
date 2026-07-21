@@ -19,11 +19,18 @@ function CapturePreviewCards({ photos, onRetake }) {
             )}
           </div>
           {photos[view]?.preview ? (
-            <img
-              className="mt-3 aspect-video w-full rounded-md bg-stone-950 object-contain"
-              src={photos[view].preview}
-              alt={`${label} capture`}
-            />
+            <div className="relative mt-3">
+              <img
+                className="aspect-video w-full rounded-md bg-stone-950 object-contain"
+                src={photos[view].censoredPreview || photos[view].preview}
+                alt={`${label} capture`}
+              />
+              {photos[view].censoredPreview && (
+                <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                  Background removed
+                </span>
+              )}
+            </div>
           ) : (
             <div className="mt-3 flex aspect-video items-center justify-center rounded-md bg-stone-100 text-sm text-stone-500">
               Not captured

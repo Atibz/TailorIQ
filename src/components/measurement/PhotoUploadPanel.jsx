@@ -28,6 +28,7 @@ function PhotoUploadPanel({ photos, uploadStatus, onRetake, onUploadPhoto }) {
       <div className="mt-4 grid gap-4">
         {Object.entries(captureLabels).map(([view, label]) => {
           const photo = photos[view];
+          const preview = photo?.censoredPreview || photo?.preview;
 
           return (
             <div key={view} className="overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
@@ -48,13 +49,18 @@ function PhotoUploadPanel({ photos, uploadStatus, onRetake, onUploadPhoto }) {
               </div>
 
               <label className="block cursor-pointer">
-                {photo?.preview ? (
+                {preview ? (
                   <div className="relative">
                     <img
                       className="aspect-[4/3] w-full bg-stone-950 object-contain"
-                      src={photo.preview}
+                      src={preview}
                       alt={`${label} upload preview`}
                     />
+                    {photo?.censoredPreview && (
+                      <span className="absolute left-3 top-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">
+                        Background removed
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <div className="flex min-h-56 flex-col items-center justify-center px-4 py-8 text-center transition hover:bg-amber-50">
