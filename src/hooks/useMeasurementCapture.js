@@ -591,14 +591,24 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       return;
     }
 
-    if (video.currentTime !== lastVideoTimeRef.current) {
-      lastVideoTimeRef.current = video.currentTime;
-      if (poseLandmarker && poseModeRef.current !== "VIDEO") {
+    if (poseLandmarker && poseModeRef.current !== "VIDEO") {
+      animationFrameRef.current = requestAnimationFrame(detectPose);
+      return;
+    }
+
+    const frameTimestamp = performance.now();
+
+    if (frameTimestamp > lastVideoTimeRef.current) {
+      lastVideoTimeRef.current = frameTimestamp;
+
+      let result;
+      try {
+        result = poseLandmarker?.detectForVideo(video, frameTimestamp);
+      } catch {
         animationFrameRef.current = requestAnimationFrame(detectPose);
         return;
       }
 
-      const result = poseLandmarker?.detectForVideo(video, video.currentTime * 1000);
       const landmarks = result?.landmarks?.[0];
       const frameMetrics = preprocessImageSource(video);
       const analysis = analyzePose(landmarks, frameMetrics, {
