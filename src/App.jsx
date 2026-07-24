@@ -663,17 +663,6 @@ async function fetchSupabaseTailorRecords(user) {
   );
 }
 
-function mergeCloudCustomers(localCustomers, cloudCustomers) {
-  const cloudKeys = new Set(cloudCustomers.map((customer) => customer.cloudCustomerId || customer.id));
-  const localOnlyCustomers = localCustomers.filter((customer) => {
-    const key = customer.cloudCustomerId || customer.id;
-
-    return !cloudKeys.has(key);
-  });
-
-  return [...cloudCustomers, ...localOnlyCustomers];
-}
-
 async function saveSupabaseTailorRecord(customer, user) {
   if (!supabase || !user?.id) {
     return { ok: false, message: getSupabaseConfigError() };
@@ -1096,17 +1085,6 @@ function mapCloudDraftRow(row) {
   });
 }
 
-function mergeCloudDrafts(localDrafts, cloudDrafts) {
-  const cloudKeys = new Set(cloudDrafts.map((draft) => draft.cloudDraftId || draft.id));
-  const localIds = new Set(cloudDrafts.map((draft) => draft.id));
-  const localOnlyDrafts = localDrafts.filter((draft) => (
-    !cloudKeys.has(draft.cloudDraftId || draft.id) &&
-    !localIds.has(draft.id)
-  ));
-
-  return [...cloudDrafts, ...localOnlyDrafts];
-}
-
 async function fetchSupabaseMeasurementDrafts(user) {
   if (!supabase || !user?.id) {
     return [];
@@ -1281,17 +1259,6 @@ async function mapCloudStyleRow(row, user) {
   };
 }
 
-function mergeCloudStyles(localStyles, cloudStyles) {
-  const cloudKeys = new Set(cloudStyles.map((style) => style.cloudStyleId || style.id));
-  const localIds = new Set(cloudStyles.map((style) => style.id));
-  const localOnlyStyles = localStyles.filter((style) => (
-    !cloudKeys.has(style.cloudStyleId || style.id) &&
-    !localIds.has(style.id)
-  ));
-
-  return [...cloudStyles, ...localOnlyStyles];
-}
-
 async function fetchSupabaseStyles(user) {
   if (!supabase || !user?.id) {
     return [];
@@ -1405,17 +1372,6 @@ function mapCloudReminderRow(row, user) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-function mergeCloudReminders(localReminders, cloudReminders) {
-  const cloudKeys = new Set(cloudReminders.map((reminder) => reminder.cloudReminderId || reminder.id));
-  const localIds = new Set(cloudReminders.map((reminder) => reminder.id));
-  const localOnlyReminders = localReminders.filter((reminder) => (
-    !cloudKeys.has(reminder.cloudReminderId || reminder.id) &&
-    !localIds.has(reminder.id)
-  ));
-
-  return [...cloudReminders, ...localOnlyReminders];
 }
 
 async function fetchSupabaseReminders(user) {
@@ -1536,17 +1492,6 @@ async function mapCloudSharedMeasurementRow(row, user) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-function mergeCloudSharedMeasurements(localShares, cloudShares) {
-  const cloudKeys = new Set(cloudShares.map((share) => share.cloudShareId || share.id));
-  const localIds = new Set(cloudShares.map((share) => share.id));
-  const localOnlyShares = localShares.filter((share) => (
-    !cloudKeys.has(share.cloudShareId || share.id) &&
-    !localIds.has(share.id)
-  ));
-
-  return [...cloudShares, ...localOnlyShares];
 }
 
 async function fetchSupabaseSharedMeasurements(user) {
@@ -1894,12 +1839,13 @@ function ReminderAlertModal({ reminder, onClose, onMarkDone, onOpenReminders, on
   );
 }
 
-function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
+function AuthPage({ onGoogleLogin, onLogin, onPasswordReset, onSignup }) {
   const [authMode, setAuthMode] = useState("login");
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
   const [formValues, setFormValues] = useState({
     fullName: "",
     email: "",
@@ -1915,6 +1861,7 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
       [event.target.name]: event.target.value,
     }));
     setAuthError("");
+    setAuthMessage("");
   };
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -1939,11 +1886,16 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
       return;
     }
 
+    if (result.message) {
+      setAuthMessage(result.message);
+    }
+
     setFormValues({ fullName: "", email: "", username: "", password: "" });
   };
 
   const handleGoogleClick = async () => {
     setAuthError("");
+    setAuthMessage("");
     setAuthLoading(true);
     const result = await onGoogleLogin();
     setAuthLoading(false);
@@ -1951,6 +1903,28 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
     if (!result.ok) {
       setAuthError(result.message);
     }
+  };
+
+  const handlePasswordReset = async () => {
+    const identifier = formValues.username.trim().replace(/^@/, "").toLowerCase();
+
+    if (!identifier) {
+      setAuthError("Enter your email or username first.");
+      return;
+    }
+
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    const result = await onPasswordReset(identifier);
+    setAuthLoading(false);
+
+    if (!result.ok) {
+      setAuthError(result.message);
+      return;
+    }
+
+    setAuthMessage(result.message || "Check your email for the reset link.");
   };
 
   return (
@@ -1964,24 +1938,26 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
             <div className="mt-12 grid w-full max-w-xs gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setAuthMode("signup");
-                  setAuthPanelOpen(true);
-                  setAuthError("");
-                  setShowPassword(false);
-                }}
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setAuthPanelOpen(true);
+                    setAuthError("");
+                    setAuthMessage("");
+                    setShowPassword(false);
+                  }}
                 className="min-h-12 rounded-full bg-white px-5 text-sm font-bold text-[#111111] shadow-sm transition hover:bg-stone-100"
               >
                 Sign up
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setAuthMode("login");
-                  setAuthPanelOpen(true);
-                  setAuthError("");
-                  setShowPassword(false);
-                }}
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthPanelOpen(true);
+                    setAuthError("");
+                    setAuthMessage("");
+                    setShowPassword(false);
+                  }}
                 className="min-h-12 rounded-full bg-[#111111] px-5 text-sm font-bold text-[#ff9f00] shadow-sm transition hover:bg-black"
               >
                 Login
@@ -2029,6 +2005,7 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
                     onClick={() => {
                       setAuthMode(item.id);
                       setAuthError("");
+                      setAuthMessage("");
                       setShowPassword(false);
                     }}
                     className={`min-h-10 rounded-full text-sm font-semibold transition ${
@@ -2115,6 +2092,11 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
                   {authError}
                 </div>
               )}
+              {authMessage && (
+                <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                  {authMessage}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -2148,11 +2130,23 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
                 {authLoading ? "Please wait..." : isSignup ? "Sign up" : "Login"}
               </button>
 
+              {!isSignup && (
+                <button
+                  type="button"
+                  onClick={handlePasswordReset}
+                  disabled={authLoading}
+                  className="mt-3 w-full text-center text-xs font-bold text-stone-700 underline decoration-amber-500 underline-offset-4"
+                >
+                  Forgot password?
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
                   setAuthMode(isSignup ? "login" : "signup");
                   setAuthError("");
+                  setAuthMessage("");
                   setShowPassword(false);
                 }}
                 className="mt-3 w-full text-center text-xs font-semibold text-stone-500"
@@ -2181,6 +2175,7 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
                 onClick={() => {
                   setAuthMode(item.id);
                   setAuthError("");
+                  setAuthMessage("");
                   setShowPassword(false);
                 }}
                 className={`min-h-10 rounded-md text-sm font-semibold transition ${
@@ -2276,6 +2271,11 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
               {authError}
             </div>
           )}
+          {authMessage && (
+            <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+              {authMessage}
+            </div>
+          )}
 
           <button
             type="button"
@@ -2309,9 +2309,16 @@ function AuthPage({ onGoogleLogin, onLogin, onSignup }) {
             {authLoading ? "Please wait..." : isSignup ? "Create account" : "Login"}
           </button>
 
-          <p className="mt-4 text-xs leading-5 text-stone-500">
-            Accounts are saved on this device for now. Online backup will be added before public release.
-          </p>
+          {!isSignup && (
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={authLoading}
+              className="mt-3 w-full text-center text-xs font-bold text-stone-600 underline decoration-amber-500 underline-offset-4"
+            >
+              Forgot password?
+            </button>
+          )}
         </form>
       </section>
 
@@ -2954,9 +2961,12 @@ function ClientHome({ draftCount, latestResult, onStartMeasurement, onViewDrafts
   );
 }
 
-function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser, onChangeMode, onSaveCustomShorthand }) {
+function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser, onChangeMode, onChangeUsername, onSaveCustomShorthand }) {
   const [customShorthandText, setCustomShorthandText] = useState("");
   const [customShorthandStatus, setCustomShorthandStatus] = useState(null);
+  const [usernameText, setUsernameText] = useState(currentUser?.username || "");
+  const [usernameStatus, setUsernameStatus] = useState(null);
+  const [usernameSaving, setUsernameSaving] = useState(false);
   const pageContent = {
     help: {
       eyebrow: "Help",
@@ -2989,6 +2999,11 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
     setCustomShorthandStatus(null);
   }, [currentUser?.username, currentUser?.customShorthand]);
 
+  useEffect(() => {
+    setUsernameText(currentUser?.username || "");
+    setUsernameStatus(null);
+  }, [currentUser?.username]);
+
   if (page === "profile") {
     const profileRows = [
       { label: "Full name", value: currentUser?.fullName || "Not provided" },
@@ -3013,6 +3028,59 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
               <p className="mt-2 break-words text-lg font-semibold text-stone-950">{row.value}</p>
             </div>
           ))}
+        </div>
+
+        <div className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-lg font-semibold text-stone-950">Username</h3>
+          <p className="mt-2 text-sm leading-6 text-stone-600">
+            This is the name people use when sharing measurements with you.
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <label className="min-w-0 flex-1 text-sm font-semibold text-stone-800">
+              New username
+              <input
+                value={usernameText}
+                onChange={(event) => {
+                  setUsernameText(event.target.value);
+                  setUsernameStatus(null);
+                }}
+                className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                placeholder="tailor_username"
+                autoCapitalize="none"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={usernameSaving}
+              onClick={async () => {
+                setUsernameSaving(true);
+                const result = await onChangeUsername(usernameText);
+                setUsernameSaving(false);
+                setUsernameStatus({
+                  type: result.ok ? "success" : "error",
+                  message: result.message,
+                });
+
+                if (result.ok && result.user?.username) {
+                  setUsernameText(result.user.username);
+                }
+              }}
+              className="tiq-primary-action min-h-11 rounded-md px-4 text-sm font-semibold transition sm:self-end"
+            >
+              {usernameSaving ? "Saving..." : "Update username"}
+            </button>
+          </div>
+
+          {usernameStatus && (
+            <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
+              usernameStatus.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+            >
+              {usernameStatus.message}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -6175,6 +6243,150 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
   );
 }
 
+function CloudSyncNotice({ status, onDismiss }) {
+  if (!status?.message) {
+    return null;
+  }
+
+  const toneClass = status.type === "error"
+    ? "border-red-200 bg-red-50 text-red-800"
+    : status.type === "saving"
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800";
+
+  return (
+    <div className="fixed left-4 right-4 top-4 z-[80] sm:left-auto sm:w-[360px]">
+      <div className={`rounded-lg border px-4 py-3 shadow-xl ${toneClass}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em]">
+              {status.type === "error" ? "Needs attention" : status.type === "saving" ? "Saving" : "Saved"}
+            </p>
+            <p className="mt-1 text-sm font-semibold leading-5">{status.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 rounded-full px-2 text-lg leading-none opacity-75 transition hover:opacity-100"
+            aria-label="Dismiss message"
+          >
+            x
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordResetPage({ onUpdatePassword }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (password.length < 6) {
+      setStatus({ type: "error", message: "Password should be at least 6 characters." });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setStatus({ type: "error", message: "Passwords do not match." });
+      return;
+    }
+
+    setSaving(true);
+    const result = await onUpdatePassword(password);
+    setSaving(false);
+
+    setStatus({
+      type: result.ok ? "success" : "error",
+      message: result.message,
+    });
+  };
+
+  return (
+    <main className="tiq-auth-page flex min-h-screen items-center justify-center px-4 py-8 text-stone-900 sm:px-6">
+      <section className="w-full max-w-md rounded-xl border border-stone-200 bg-white p-5 shadow-xl sm:p-6">
+        <TailorIQWordmark />
+        <h1 className="mt-6 text-2xl font-semibold text-stone-950">Set a new password</h1>
+        <p className="mt-2 text-sm leading-6 text-stone-600">
+          Enter a new password for your TailorIQ account.
+        </p>
+
+        <form onSubmit={handleSubmit} className="mt-5 grid gap-4">
+          <label className="text-sm font-semibold text-stone-800">
+            New password
+            <span className="relative mt-2 block">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setStatus(null);
+                }}
+                className="min-h-11 w-full rounded-md border border-stone-300 px-3 pr-14 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                placeholder="New password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((currentValue) => !currentValue)}
+                className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-stone-500 transition hover:bg-stone-100 hover:text-stone-950"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                  {showPassword ? (
+                    <path d="m2.39 1.73 19.88 19.88-1.41 1.41-3.18-3.18A11.86 11.86 0 0 1 12 21C5 21 1 12 1 12a20.8 20.8 0 0 1 5.2-6.62L.98 1.14l1.41-1.41Zm7.07 7.07a3 3 0 0 0 4.24 4.24L9.46 8.8ZM12 3c7 0 11 9 11 9a20.87 20.87 0 0 1-3.39 4.86l-2.84-2.84A5 5 0 0 0 9.98 7.23L7.82 5.07A11.83 11.83 0 0 1 12 3Z" />
+                  ) : (
+                    <path d="M12 5c7 0 11 7 11 7s-4 7-11 7S1 12 1 12s4-7 11-7Zm0 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0-2.2a1.8 1.8 0 1 1 0-3.6 1.8 1.8 0 0 1 0 3.6Z" />
+                  )}
+                </svg>
+              </button>
+            </span>
+          </label>
+
+          <label className="text-sm font-semibold text-stone-800">
+            Confirm password
+            <input
+              type={showPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(event) => {
+                setConfirmPassword(event.target.value);
+                setStatus(null);
+              }}
+              className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+              placeholder="Confirm password"
+            />
+          </label>
+
+          {status && (
+            <div className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+              status.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+            >
+              {status.message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="tiq-primary-action min-h-11 rounded-md px-5 text-sm font-semibold transition"
+          >
+            {saving ? "Saving..." : "Save new password"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const [authUsers, setAuthUsers] = useState(loadStoredUsers);
   const [authSession, setAuthSession] = useState(loadStoredSession);
@@ -6199,6 +6411,14 @@ function App() {
   const [deleteAction, setDeleteAction] = useState(null);
   const [activeReminderAlert, setActiveReminderAlert] = useState(null);
   const [draftStorageError, setDraftStorageError] = useState("");
+  const [cloudStatus, setCloudStatus] = useState(null);
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.location.hash.includes("type=recovery") || window.location.search.includes("type=recovery");
+  });
   const cloudDraftIdsRef = useRef({});
   const cloudDraftPendingRef = useRef({});
   const cloudDraftQueuedRef = useRef({});
@@ -6231,6 +6451,78 @@ function App() {
   );
   const activeMeasurementDraft = visibleMeasurementDrafts.find((draft) => draft.id === activeMeasurementDraftId) || null;
 
+  const showCloudStatus = useCallback((type, message) => {
+    setCloudStatus({
+      id: Date.now(),
+      type,
+      message,
+    });
+
+    if (type === "error") {
+      setDraftStorageError(message);
+    } else {
+      setDraftStorageError("");
+    }
+  }, []);
+
+  function clearWorkspaceState() {
+    setCustomers([]);
+    setStyles([]);
+    setReminders([]);
+    setClientResult(null);
+    setSharedMeasurements([]);
+    setProcessedCustomer(null);
+    setReviewDraft(null);
+    setMeasurementDrafts([]);
+    setActiveMeasurementDraftId(null);
+    setMeasurementEntryMode(null);
+    setDeleteAction(null);
+    setActiveReminderAlert(null);
+    setDraftStorageError("");
+    cloudDraftIdsRef.current = {};
+    cloudDraftPendingRef.current = {};
+    cloudDraftQueuedRef.current = {};
+  }
+
+  async function replaceWorkspaceWithCloud(profileUser, modeOverride = profileUser?.mode || "") {
+    if (!profileUser?.id) {
+      clearWorkspaceState();
+      return;
+    }
+
+    const nextMode = modeOverride || "";
+    const [
+      cloudCustomers,
+      cloudDrafts,
+      cloudStyles,
+      cloudReminders,
+      cloudShares,
+      cloudClientResult,
+    ] = await Promise.all([
+      nextMode === "tailor" ? fetchSupabaseTailorRecords(profileUser) : Promise.resolve([]),
+      fetchSupabaseMeasurementDrafts(profileUser),
+      fetchSupabaseStyles(profileUser),
+      nextMode === "tailor" ? fetchSupabaseReminders(profileUser) : Promise.resolve([]),
+      fetchSupabaseSharedMeasurements(profileUser),
+      nextMode === "client" ? fetchSupabaseClientResult(profileUser) : Promise.resolve(null),
+    ]);
+
+    setCustomers(cloudCustomers);
+    setMeasurementDrafts(cloudDrafts);
+    setStyles(cloudStyles);
+    setReminders(cloudReminders);
+    setSharedMeasurements(cloudShares);
+    setClientResult(cloudClientResult || null);
+    setProcessedCustomer(null);
+    setReviewDraft(null);
+    setActiveMeasurementDraftId(null);
+    setMeasurementEntryMode(null);
+    setDraftStorageError("");
+    cloudDraftIdsRef.current = {};
+    cloudDraftPendingRef.current = {};
+    cloudDraftQueuedRef.current = {};
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -6262,49 +6554,13 @@ function App() {
         setAuthSession({ userId: profileUser.id, username: profileUser.username });
         setUserMode(profileUser.mode || "");
 
-        if (profileUser.mode === "tailor") {
-          const cloudCustomers = await fetchSupabaseTailorRecords(profileUser);
-
-          if (mounted) {
-            setCustomers((currentCustomers) => mergeCloudCustomers(currentCustomers, cloudCustomers));
-          }
-        }
-
-        const cloudDrafts = await fetchSupabaseMeasurementDrafts(profileUser);
-
         if (mounted) {
-          setMeasurementDrafts((currentDrafts) => mergeCloudDrafts(currentDrafts, cloudDrafts));
-        }
-
-        const cloudStyles = await fetchSupabaseStyles(profileUser);
-
-        if (mounted) {
-          setStyles((currentStyles) => mergeCloudStyles(currentStyles, cloudStyles));
-        }
-
-        if (profileUser.mode === "tailor") {
-          const cloudReminders = await fetchSupabaseReminders(profileUser);
-
-          if (mounted) {
-            setReminders((currentReminders) => mergeCloudReminders(currentReminders, cloudReminders));
-          }
-        }
-
-        const cloudShares = await fetchSupabaseSharedMeasurements(profileUser);
-
-        if (mounted) {
-          setSharedMeasurements((currentShares) => mergeCloudSharedMeasurements(currentShares, cloudShares));
-        }
-
-        if (profileUser.mode === "client") {
-          const cloudClientResult = await fetchSupabaseClientResult(profileUser);
-
-          if (mounted && cloudClientResult) {
-            setClientResult(cloudClientResult);
-          }
+          await replaceWorkspaceWithCloud(profileUser);
         }
       } catch {
-        // Fall back to the local auth screen if profile loading fails.
+        if (mounted) {
+          clearWorkspaceState();
+        }
       } finally {
         if (mounted) {
           setInitialAuthLoading(false);
@@ -6379,6 +6635,16 @@ function App() {
   }, [activePage]);
 
   useEffect(() => {
+    if (!cloudStatus || cloudStatus.type === "saving") {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => setCloudStatus(null), 4200);
+
+    return () => window.clearTimeout(timeout);
+  }, [cloudStatus]);
+
+  useEffect(() => {
     if (!currentUser || isClientMode || activeReminderAlert) {
       return undefined;
     }
@@ -6416,7 +6682,7 @@ function App() {
         updatedAt: new Date().toISOString(),
       }, currentUser).then((result) => {
         if (!result.ok) {
-          setDraftStorageError(`Cloud reminder update failed: ${result.message}`);
+          showCloudStatus("error", `Reminder could not be updated. ${result.message}`);
         }
       });
       setReminders((currentReminders) => currentReminders.map((reminder) => (
@@ -6430,7 +6696,7 @@ function App() {
     const intervalId = window.setInterval(checkDueReminders, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeReminderAlert, currentUser, isClientMode, reminders]);
+  }, [activeReminderAlert, currentUser, isClientMode, reminders, showCloudStatus]);
 
   const handleSignup = async ({ fullName, email, username, password }) => {
     if (!hasSupabaseConfig || !supabase) {
@@ -6453,6 +6719,7 @@ function App() {
       email,
       password,
       options: {
+        emailRedirectTo: window.location.origin,
         data: {
           full_name: fullName,
           username,
@@ -6487,7 +6754,21 @@ function App() {
         return { ok: false, message: "That username is already taken." };
       }
 
+      if (!data.session) {
+        return {
+          ok: true,
+          message: "Check your email to verify your account, then come back to login.",
+        };
+      }
+
       return { ok: false, message: profileError.message };
+    }
+
+    if (!data.session) {
+      return {
+        ok: true,
+        message: "Check your email to verify your account, then come back to login.",
+      };
     }
 
     const nextUser = mapProfileToUser(profileRow, data.user);
@@ -6495,6 +6776,7 @@ function App() {
     setAuthUsers((currentUsers) => mergeAuthUser(currentUsers, nextUser));
     setAuthSession({ userId: nextUser.id, username: nextUser.username });
     setUserMode("");
+    clearWorkspaceState();
     setActivePage("dashboard");
     return { ok: true };
   };
@@ -6516,6 +6798,53 @@ function App() {
     }
 
     return { ok: true };
+  };
+
+  const handlePasswordReset = async (identifier) => {
+    if (!hasSupabaseConfig || !supabase) {
+      return { ok: false, message: getSupabaseConfigError() };
+    }
+
+    const loginId = identifier.trim().replace(/^@/, "").toLowerCase();
+    let recoveryEmail = loginId;
+
+    if (!loginId.includes("@")) {
+      const { data: usernameEmail, error: usernameError } = await supabase
+        .rpc("get_email_by_username", { login_username: loginId });
+
+      if (usernameError || !usernameEmail) {
+        return { ok: false, message: "No account was found with that email or username." };
+      }
+
+      recoveryEmail = usernameEmail;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    return { ok: true, message: "Check your email for the reset link." };
+  };
+
+  const handleUpdatePassword = async (password) => {
+    if (!hasSupabaseConfig || !supabase) {
+      return { ok: false, message: getSupabaseConfigError() };
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setPasswordRecoveryMode(false);
+    showCloudStatus("success", "Password updated.");
+    return { ok: true, message: "Password updated. You can continue using TailorIQ." };
   };
 
   const handleLogin = async ({ identifier, password }) => {
@@ -6542,6 +6871,10 @@ function App() {
       password,
     });
 
+    if (error?.message?.toLowerCase().includes("email not confirmed")) {
+      return { ok: false, message: "Check your email to verify your account before logging in." };
+    }
+
     if (error || !data.user) {
       return { ok: false, message: "Email/username or password is incorrect." };
     }
@@ -6552,32 +6885,7 @@ function App() {
       setAuthUsers((currentUsers) => mergeAuthUser(currentUsers, profileUser));
       setAuthSession({ userId: profileUser.id, username: profileUser.username });
       setUserMode(profileUser.mode || "");
-
-      if (profileUser.mode === "tailor") {
-        const cloudCustomers = await fetchSupabaseTailorRecords(profileUser);
-        setCustomers((currentCustomers) => mergeCloudCustomers(currentCustomers, cloudCustomers));
-      }
-
-      const cloudDrafts = await fetchSupabaseMeasurementDrafts(profileUser);
-      setMeasurementDrafts((currentDrafts) => mergeCloudDrafts(currentDrafts, cloudDrafts));
-      const cloudStyles = await fetchSupabaseStyles(profileUser);
-      setStyles((currentStyles) => mergeCloudStyles(currentStyles, cloudStyles));
-
-      if (profileUser.mode === "tailor") {
-        const cloudReminders = await fetchSupabaseReminders(profileUser);
-        setReminders((currentReminders) => mergeCloudReminders(currentReminders, cloudReminders));
-      }
-
-      const cloudShares = await fetchSupabaseSharedMeasurements(profileUser);
-      setSharedMeasurements((currentShares) => mergeCloudSharedMeasurements(currentShares, cloudShares));
-
-      if (profileUser.mode === "client") {
-        const cloudClientResult = await fetchSupabaseClientResult(profileUser);
-
-        if (cloudClientResult) {
-          setClientResult(cloudClientResult);
-        }
-      }
+      await replaceWorkspaceWithCloud(profileUser);
     } catch (profileError) {
       return { ok: false, message: profileError.message || "Could not load your profile." };
     }
@@ -6632,6 +6940,57 @@ function App() {
     return { ok: true };
   };
 
+  const handleChangeUsername = async (username) => {
+    if (!supabase || !currentUser?.id) {
+      return { ok: false, message: "Your account session is not ready. Login again and retry." };
+    }
+
+    const nextUsername = username.trim().replace(/^@/, "").toLowerCase();
+
+    if (!/^[a-z0-9_]{3,24}$/.test(nextUsername)) {
+      return { ok: false, message: "Use 3-24 lowercase letters, numbers, or underscores." };
+    }
+
+    if (nextUsername === currentUser.username) {
+      return { ok: true, user: currentUser, message: "Username is unchanged." };
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        username: nextUsername,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", currentUser.id);
+
+    if (error) {
+      if (error.message.toLowerCase().includes("duplicate")) {
+        return { ok: false, message: "That username is already taken." };
+      }
+
+      return { ok: false, message: error.message };
+    }
+
+    await supabase.auth.updateUser({
+      data: {
+        username: nextUsername,
+      },
+    });
+
+    const nextUser = {
+      ...currentUser,
+      username: nextUsername,
+      needsUsername: false,
+    };
+
+    setAuthUsers((currentUsers) => mergeAuthUser(currentUsers, nextUser));
+    setAuthSession({ userId: nextUser.id, username: nextUsername });
+    await replaceWorkspaceWithCloud(nextUser, userMode);
+    showCloudStatus("success", "Username updated.");
+
+    return { ok: true, user: nextUser, message: "Username updated." };
+  };
+
   const handleLogout = async () => {
     if (supabase) {
       await supabase.auth.signOut();
@@ -6640,10 +6999,7 @@ function App() {
     setAuthSession(null);
     setUserMode("");
     setActivePage("dashboard");
-    setProcessedCustomer(null);
-    setReviewDraft(null);
-    setActiveMeasurementDraftId(null);
-    setMeasurementEntryMode(null);
+    clearWorkspaceState();
   };
 
   const handleToggleTheme = () => {
@@ -6692,13 +7048,16 @@ function App() {
   };
 
   const handleShareToTailor = async ({ tailorUsername, includePhotos, customer }) => {
+    showCloudStatus("saving", "Sharing measurement...");
     const cloudResult = await saveSupabaseSharedMeasurement({ tailorUsername, includePhotos, customer }, currentUser);
 
     if (!cloudResult.ok) {
+      showCloudStatus("error", `Measurement could not be shared. ${cloudResult.message}`);
       return cloudResult;
     }
 
     setSharedMeasurements((currentShares) => [cloudResult.share, ...currentShares]);
+    showCloudStatus("success", "Measurement shared.");
     return { ok: true };
   };
 
@@ -6746,7 +7105,7 @@ function App() {
       cloudDraftPendingRef.current[localDraftId] = false;
 
       if (!result.ok) {
-        setDraftStorageError(`Cloud draft save failed: ${result.message}`);
+        showCloudStatus("error", `Draft could not be saved. ${result.message}`);
         return;
       }
 
@@ -6762,13 +7121,13 @@ function App() {
         syncDraftToCloud({ ...queuedDraft, cloudDraftId: result.draft.cloudDraftId });
       }
     });
-  }, [currentUser]);
+  }, [currentUser, showCloudStatus]);
 
   const confirmDeleteCustomer = async (customer) => {
     const cloudResult = await deleteSupabaseTailorRecord(customer, currentUser);
 
     if (!cloudResult.ok) {
-      setDraftStorageError(`Cloud delete failed: ${cloudResult.message}`);
+      showCloudStatus("error", `Customer record could not be deleted. ${cloudResult.message}`);
       return false;
     }
 
@@ -6834,7 +7193,7 @@ function App() {
       syncDraftToCloud(reviewDraft);
 
       if (!saveMeasurementDrafts(nextDrafts)) {
-        setDraftStorageError("Draft could not be saved because browser storage is full. Delete older drafts and try again.");
+        showCloudStatus("error", "Draft could not be saved on this device. Delete older drafts and try again.");
       }
 
       return nextDrafts;
@@ -6859,14 +7218,14 @@ function App() {
         : [nextDraft, ...currentDrafts];
 
       if (!saveMeasurementDrafts(nextDrafts)) {
-        setDraftStorageError("Draft could not be saved because browser storage is full. Retake photos or delete older drafts.");
+        showCloudStatus("error", "Draft could not be saved on this device. Retake photos or delete older drafts.");
       }
 
       syncDraftToCloud(nextDraft);
 
       return nextDrafts;
     });
-  }, [activeMeasurementDraftId, syncDraftToCloud, userMode]);
+  }, [activeMeasurementDraftId, showCloudStatus, syncDraftToCloud, userMode]);
 
   const handleDeleteMeasurementDraft = (draft) => {
     const draftName = draft.stage === "review"
@@ -6894,7 +7253,7 @@ function App() {
     if (draftToClear) {
       deleteSupabaseMeasurementDraft(draftToClear, currentUser).then((result) => {
         if (!result.ok) {
-          setDraftStorageError(`Cloud draft delete failed: ${result.message}`);
+          showCloudStatus("error", `Draft could not be deleted. ${result.message}`);
         }
       });
     }
@@ -6904,18 +7263,19 @@ function App() {
       setActiveMeasurementDraftId(null);
     }
     setDraftStorageError("");
-  }, [activeMeasurementDraftId, currentUser, measurementDrafts]);
+  }, [activeMeasurementDraftId, currentUser, measurementDrafts, showCloudStatus]);
 
   const handleReviewSave = async (reviewedCustomer) => {
     let savedCustomer = { ...reviewedCustomer, appMode: reviewedCustomer.appMode || userMode };
 
     delete savedCustomer.editMode;
+    showCloudStatus("saving", "Saving final measurement...");
 
     if (!isClientMode) {
       const cloudResult = await saveSupabaseTailorRecord(savedCustomer, currentUser);
 
       if (!cloudResult.ok) {
-        setDraftStorageError(`Cloud save failed: ${cloudResult.message}`);
+        showCloudStatus("error", `Final measurement was not saved. ${cloudResult.message}`);
         return;
       }
 
@@ -6941,7 +7301,7 @@ function App() {
       const cloudResult = await saveSupabaseClientResult(savedCustomer, currentUser);
 
       if (!cloudResult.ok) {
-        setDraftStorageError(`Cloud client result save failed: ${cloudResult.message}`);
+        showCloudStatus("error", `Measurement result was not saved. ${cloudResult.message}`);
         return;
       }
 
@@ -6955,6 +7315,7 @@ function App() {
       setActiveMeasurementDraftId(null);
     }
     setActivePage("results");
+    showCloudStatus("success", "Measurement saved.");
   };
 
   const handleManualSave = async (manualData) => {
@@ -6966,7 +7327,7 @@ function App() {
     const cloudResult = await saveSupabaseTailorRecord(customer, currentUser);
 
     if (!cloudResult.ok) {
-      setDraftStorageError(`Cloud save failed: ${cloudResult.message}`);
+      showCloudStatus("error", `Manual measurement was not saved. ${cloudResult.message}`);
       return;
     }
 
@@ -6975,9 +7336,11 @@ function App() {
     setCustomers((currentCustomers) => [savedCustomer, ...currentCustomers]);
     setProcessedCustomer(savedCustomer);
     setActivePage("results");
+    showCloudStatus("success", "Manual measurement saved.");
   };
 
   const handleSaveStyle = async (styleData) => {
+    showCloudStatus("saving", "Saving style...");
     const nextStyle = {
       ...styleData,
       id: `style-${Date.now()}-${Math.round(Math.random() * 100000)}`,
@@ -6989,11 +7352,12 @@ function App() {
     const cloudResult = await saveSupabaseStyle(nextStyle, currentUser);
 
     if (!cloudResult.ok) {
-      setDraftStorageError(`Cloud style save failed: ${cloudResult.message}`);
+      showCloudStatus("error", `Style could not be saved. ${cloudResult.message}`);
       return false;
     }
 
     setStyles((currentStyles) => [cloudResult.style, ...currentStyles]);
+    showCloudStatus("success", "Style saved.");
     return true;
   };
 
@@ -7007,6 +7371,7 @@ function App() {
   };
 
   const handleSaveReminder = async (reminderData) => {
+    showCloudStatus("saving", "Saving reminder...");
     const linkedCustomer = visibleCustomers.find((customer) => String(customer.id) === String(reminderData.customerId));
     const nextReminder = {
       id: `reminder-${Date.now()}-${Math.round(Math.random() * 100000)}`,
@@ -7026,11 +7391,12 @@ function App() {
     const cloudResult = await saveSupabaseReminder(nextReminder, currentUser);
 
     if (!cloudResult.ok) {
-      setDraftStorageError(`Cloud reminder save failed: ${cloudResult.message}`);
+      showCloudStatus("error", `Reminder could not be saved. ${cloudResult.message}`);
       return false;
     }
 
     setReminders((currentReminders) => [cloudResult.reminder, ...currentReminders]);
+    showCloudStatus("success", "Reminder saved.");
     return true;
   };
 
@@ -7050,7 +7416,7 @@ function App() {
     const cloudResult = await saveSupabaseReminder(nextReminder, currentUser);
 
     if (!cloudResult.ok) {
-      setDraftStorageError(`Cloud reminder update failed: ${cloudResult.message}`);
+      showCloudStatus("error", `Reminder could not be updated. ${cloudResult.message}`);
       return false;
     }
 
@@ -7149,7 +7515,7 @@ function App() {
       const cloudResult = await deleteSupabaseMeasurementDraft(draftToDelete, currentUser);
 
       if (!cloudResult.ok) {
-        setDraftStorageError(`Cloud draft delete failed: ${cloudResult.message}`);
+        showCloudStatus("error", `Draft could not be deleted. ${cloudResult.message}`);
         return;
       }
 
@@ -7164,7 +7530,7 @@ function App() {
       const cloudResult = await deleteSupabaseStyle(deleteAction.style, currentUser);
 
       if (!cloudResult.ok) {
-        setDraftStorageError(`Cloud style delete failed: ${cloudResult.message}`);
+        showCloudStatus("error", `Style could not be deleted. ${cloudResult.message}`);
         return;
       }
 
@@ -7175,7 +7541,7 @@ function App() {
       const cloudResult = await deleteSupabaseReminder(deleteAction.reminder, currentUser);
 
       if (!cloudResult.ok) {
-        setDraftStorageError(`Cloud reminder delete failed: ${cloudResult.message}`);
+        showCloudStatus("error", `Reminder could not be deleted. ${cloudResult.message}`);
         return;
       }
 
@@ -7183,6 +7549,7 @@ function App() {
     }
 
     setDeleteAction(null);
+    showCloudStatus("success", "Deleted.");
   };
 
   const handleContinueDraft = (draft) => {
@@ -7225,55 +7592,10 @@ function App() {
           .eq("id", currentUser.id);
       }
 
-      if (mode === "tailor") {
-        try {
-          const cloudCustomers = await fetchSupabaseTailorRecords({ id: currentUser.id });
-          setCustomers((currentCustomers) => mergeCloudCustomers(currentCustomers, cloudCustomers));
-        } catch {
-          // Local records stay available if cloud records cannot load.
-        }
-      }
-
       try {
-        const cloudDrafts = await fetchSupabaseMeasurementDrafts({ id: currentUser.id });
-        setMeasurementDrafts((currentDrafts) => mergeCloudDrafts(currentDrafts, cloudDrafts));
+        await replaceWorkspaceWithCloud({ ...currentUser, mode }, mode);
       } catch {
-        // Local drafts stay available if cloud drafts cannot load.
-      }
-
-      try {
-        const cloudStyles = await fetchSupabaseStyles(currentUser);
-        setStyles((currentStyles) => mergeCloudStyles(currentStyles, cloudStyles));
-      } catch {
-        // Local styles stay available if cloud styles cannot load.
-      }
-
-      if (mode === "tailor") {
-        try {
-          const cloudReminders = await fetchSupabaseReminders(currentUser);
-          setReminders((currentReminders) => mergeCloudReminders(currentReminders, cloudReminders));
-        } catch {
-          // Local reminders stay available if cloud reminders cannot load.
-        }
-      }
-
-      try {
-        const cloudShares = await fetchSupabaseSharedMeasurements(currentUser);
-        setSharedMeasurements((currentShares) => mergeCloudSharedMeasurements(currentShares, cloudShares));
-      } catch {
-        // Local shared measurements stay available if cloud sharing cannot load.
-      }
-
-      if (mode === "client") {
-        try {
-          const cloudClientResult = await fetchSupabaseClientResult(currentUser);
-
-          if (cloudClientResult) {
-            setClientResult(cloudClientResult);
-          }
-        } catch {
-          // Local client result stays available if cloud result cannot load.
-        }
+        showCloudStatus("error", "Workspace could not load. Refresh and try again.");
       }
     }
     setActivePage("dashboard");
@@ -7318,8 +7640,19 @@ function App() {
     );
   }
 
+  if (passwordRecoveryMode) {
+    return <PasswordResetPage onUpdatePassword={handleUpdatePassword} />;
+  }
+
   if (!currentUser) {
-    return <AuthPage onGoogleLogin={handleGoogleLogin} onLogin={handleLogin} onSignup={handleSignup} />;
+    return (
+      <AuthPage
+        onGoogleLogin={handleGoogleLogin}
+        onLogin={handleLogin}
+        onPasswordReset={handlePasswordReset}
+        onSignup={handleSignup}
+      />
+    );
   }
 
   if (currentUser.needsUsername) {
@@ -7514,6 +7847,7 @@ function App() {
             customerCount={visibleCustomers.length}
             draftCount={visibleMeasurementDrafts.length}
             onChangeMode={handleChangeMode}
+            onChangeUsername={handleChangeUsername}
             onSaveCustomShorthand={handleSaveCustomShorthand}
           />
         )}
@@ -7523,6 +7857,10 @@ function App() {
         action={deleteAction}
         onCancel={() => setDeleteAction(null)}
         onConfirm={handleConfirmDelete}
+      />
+      <CloudSyncNotice
+        status={cloudStatus}
+        onDismiss={() => setCloudStatus(null)}
       />
       <ReminderAlertModal
         reminder={activeReminderAlert}
