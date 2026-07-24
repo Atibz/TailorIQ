@@ -90,7 +90,7 @@ const stepContent = {
   photoReview: {
     eyebrow: "Step 5",
     title: "Check your photos",
-    description: "Review the front and side photos before analysis begins.",
+    description: "Review the front and side photos before creating measurements.",
   },
   captureMethod: {
     eyebrow: "Step 3",
@@ -124,20 +124,20 @@ function CompletionStatus({ items }) {
 
 function ProcessingMeasurementPanel() {
   const steps = [
-    "Syncing front and side views",
-    "Reading pose landmarks",
-    "Extracting silhouette data",
-    "Calculating body measurements",
+    "Checking front and side photos",
+    "Reading body position",
+    "Finding the body outline",
+    "Preparing measurements",
   ];
 
   return (
     <div className="tiq-processing-panel overflow-hidden rounded-xl border border-[#ff9f00]/35 bg-[#111111] p-4 text-white shadow-lg">
       <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#ff9f00]">Measurement engine</p>
-          <h3 className="mt-2 text-xl font-semibold">Running visual analysis</h3>
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#ff9f00]">Measurement check</p>
+          <h3 className="mt-2 text-xl font-semibold">Creating your measurements</h3>
           <p className="mt-2 text-sm leading-6 text-white/70">
-            Scanning photo views, aligning pose landmarks, sampling silhouette data, and preparing tailor-ready estimates.
+            Checking the photos, reading body position, and preparing measurements for review.
           </p>
         </div>
 
@@ -312,7 +312,7 @@ function CaptureMethodChoice({ isClientMode, referenceObject, scaleMode, measure
         >
           <span className="text-sm font-semibold text-stone-950">Someone is helping</span>
           <span className="mt-2 block text-sm leading-6 text-stone-600">
-            Use the guided camera like tailor mode, then review the photos before analysis.
+            Use the guided camera like tailor mode, then review the photos before measurements are created.
           </span>
         </button>
       </div>
@@ -512,7 +512,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }
 
     if (!capture.photos.front || !capture.photos.side) {
-      setError("Capture clear front and side photos so the measurement can be pose-assisted.");
+      setError("Capture clear front and side photos before creating measurements.");
       return;
     }
 
@@ -559,7 +559,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
           ? "Uploaded photos"
           : captureInputMode === "self-camera"
             ? "Self guided camera"
-            : "MediaPipe guided camera",
+            : "Guided camera",
         pipeline: [
           captureInputMode === "upload"
             ? "Uploaded photos"
@@ -567,14 +567,14 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
               ? "Self guided camera"
               : "Camera capture",
           "Guideline checks",
-          "MediaPipe Pose",
-          needsReference ? "Reference calibration" : "Scale anchor",
-          "Backend segmentation",
+          "Photo quality checks",
+          needsReference ? "Reference size check" : "Size reference",
+          "Measurement preparation",
         ],
       });
     } catch (submitError) {
       setIsProcessing(false);
-      setError(submitError.message || "Backend segmentation failed. Check the backend and try again.");
+      setError(submitError.message || "Measurement processing failed. Check your connection and try again.");
     }
   };
 
@@ -608,7 +608,7 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }
 
     if (stepId === "photoReview" && !hasPhotos) {
-      return "Review both front and side photos before analysis begins.";
+      return "Review both front and side photos before creating measurements.";
     }
 
     if (stepId === "reference" && needsReference && !referenceCalibration) {

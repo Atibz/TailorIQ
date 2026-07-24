@@ -20,7 +20,7 @@ function loadImage(source) {
     const image = new Image();
 
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not prepare image for backend segmentation."));
+    image.onerror = () => reject(new Error("Could not prepare the photo for measurement."));
     image.src = source;
   });
 }
@@ -48,7 +48,7 @@ async function createRaster(source) {
 
 export async function requestSegmentationMeasurements(customerData) {
   if (!SEGMENTATION_API_URL) {
-    throw new Error("Set VITE_SEGMENTATION_API_URL to use backend segmentation.");
+    throw new Error("Measurement service is not connected. Check the app setup and try again.");
   }
 
   const frontRaster = await createRaster(customerData.segmentationImages.front);
@@ -81,7 +81,7 @@ export async function requestSegmentationMeasurements(customerData) {
   });
 
   if (!response.ok) {
-    let message = `Segmentation backend failed with ${response.status}`;
+    let message = `Measurement service failed with ${response.status}`;
 
     try {
       const errorBody = await response.json();
@@ -96,7 +96,7 @@ export async function requestSegmentationMeasurements(customerData) {
   const result = await response.json();
 
   if (!result?.measurements) {
-    throw new Error("Segmentation backend did not return measurements.");
+    throw new Error("Measurement service did not return measurements.");
   }
 
   return result;

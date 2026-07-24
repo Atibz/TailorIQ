@@ -617,7 +617,7 @@ function getFrameWarnings(metrics, label) {
   }
 
   if (frame.brightness < 50) {
-    warnings.push(`${label} photo looks too dark. Use brighter, even lighting for better body outline detection.`);
+    warnings.push(`${label} photo looks too dark. Use brighter, even lighting so the body is clear.`);
   } else if (frame.brightness > 225) {
     warnings.push(`${label} photo looks overexposed. Reduce harsh light so the body outline stays visible.`);
   }
@@ -637,7 +637,7 @@ function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
   const bodyHeightRatio = metrics?.bodyHeightRatio;
 
   if (!Number.isFinite(bodyHeightRatio)) {
-    return [`${label} body-fit data is missing. The person may not have been fully detected.`];
+    return [`${label} full-body check is missing. Retake the photo if the person is not clearly visible from head to feet.`];
   }
 
   if (bodyHeightRatio < minimum) {
@@ -670,11 +670,11 @@ function validateCapturePayload(payload) {
   const warnings = [];
 
   if (!frontPose?.silhouetteLevels) {
-    errors.push("Front view pose data is missing. Retake or re-upload the front photo with the guided checks active.");
+    errors.push("Front view photo check is missing. Retake or re-upload the front photo with the guided checks active.");
   }
 
   if (!sidePose?.silhouetteLevels) {
-    errors.push("Side view pose data is missing. Retake or re-upload the side photo with the guided checks active.");
+    errors.push("Side view photo check is missing. Retake or re-upload the side photo with the guided checks active.");
   }
 
   if (errors.length > 0) {
@@ -692,11 +692,11 @@ function validateCapturePayload(payload) {
   const sideLandmarks = getLandmarkSummary(sidePose);
 
   if (!frontLandmarks.hasExpectedLandmarks) {
-    warnings.push("Front view landmark set is incomplete. Future high-accuracy processing may need a retake.");
+    warnings.push("Front view photo is missing some body details. Retake if the result looks unreliable.");
   }
 
   if (!sideLandmarks.hasExpectedLandmarks) {
-    warnings.push("Side view landmark set is incomplete. Future high-accuracy processing may need a retake.");
+    warnings.push("Side view photo is missing some body details. Retake if the result looks unreliable.");
   }
 
   return { errors, warnings };
@@ -979,7 +979,7 @@ function buildMeasurements(payload, captureWarnings = []) {
       ...captureWarnings,
       ...(silhouette
         ? []
-        : ["Silhouette sampling could not run. Check that front and side photos are full-body images on a plain background."]),
+        : ["The body outline could not be checked well. Use clear full-body front and side photos on a plain background."]),
     ],
     debug: {
       engine: silhouette ? "2.5d-silhouette-backend" : "pose-baseline-backend",
@@ -1116,7 +1116,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && (requestPath === "/" || requestPath === "/health")) {
     sendJson(response, 200, {
       ok: true,
-      service: "TailorIQ segmentation backend",
+      service: "TailorIQ measurement service",
       endpoint: "/measurements/segment",
     });
     return;
@@ -1143,7 +1143,7 @@ const server = http.createServer(async (request, response) => {
 
     if (!payload.rasters?.front || !payload.rasters?.side) {
       sendJson(response, 400, {
-        error: `Front and side rasters are required for 2.5D silhouette sampling. Received front: ${Boolean(payload.rasters?.front)}, side: ${Boolean(payload.rasters?.side)}.`,
+        error: `Front and side photos could not be prepared for measurement. Received front: ${Boolean(payload.rasters?.front)}, side: ${Boolean(payload.rasters?.side)}.`,
       });
       return;
     }
@@ -1160,10 +1160,10 @@ const server = http.createServer(async (request, response) => {
 
     sendJson(response, 200, buildMeasurements(payload, captureValidation.warnings));
   } catch (error) {
-    sendJson(response, 500, { error: error.message || "Segmentation backend failed" });
+    sendJson(response, 500, { error: error.message || "Measurement service failed" });
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`TailorIQ segmentation backend listening on http://localhost:${PORT}`);
+  console.log(`TailorIQ measurement service listening on http://localhost:${PORT}`);
 });

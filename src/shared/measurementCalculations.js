@@ -59,7 +59,7 @@ export const getScaleSourceLabel = (customer) => {
 
   if (customer.scaleMode === "reference") {
     return customer.referenceCalibratedHeightCm
-      ? `${getReferenceLabel(customer)} calibrated`
+      ? `${getReferenceLabel(customer)} reference`
       : getReferenceLabel(customer);
   }
 
@@ -296,7 +296,7 @@ export function buildBackendMeasurements(customer, backendResult, fallbackMeasur
       fieldKey: field.key,
       label: field.label,
       valueCm,
-      note: `Backend segmentation: ${field.note}`,
+      note: `Photo-based result: ${field.note}`,
       group: field.group,
     };
   });

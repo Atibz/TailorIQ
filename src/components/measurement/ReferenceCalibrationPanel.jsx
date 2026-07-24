@@ -49,7 +49,7 @@ function ReferenceCalibrationPanel({
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-stone-950">Reference scale calibration</p>
+          <p className="text-sm font-semibold text-stone-950">Reference size check</p>
           <p className="mt-1 text-sm text-amber-900">
             Mark the top and bottom of the {reference?.label || "reference object"} in the front photo.
           </p>
@@ -80,7 +80,7 @@ function ReferenceCalibrationPanel({
         {[
           "Tap the top edge",
           "Tap the bottom edge",
-          "Check the calibrated height",
+          "Check the height estimate",
         ].map((step, index) => (
           <div key={step} className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-stone-700">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-stone-950">
@@ -100,7 +100,7 @@ function ReferenceCalibrationPanel({
           <img
             className="aspect-[3/4] w-full object-contain sm:aspect-video"
             src={photo.preview}
-            alt="Front view reference calibration"
+            alt="Front view reference marking"
           />
           {["top", "bottom"].map((point) => (
             <React.Fragment key={point}>
@@ -125,8 +125,7 @@ function ReferenceCalibrationPanel({
             Set {activePoint === "top" ? "top edge" : "bottom edge"}
           </p>
           <p className="mt-3 text-sm text-stone-600">
-            The app compares the marked reference height with the pose height in the same image, then converts the body
-            scale to centimeters.
+            The app uses the marked reference object to understand the photo size and prepare measurements in centimeters.
           </p>
           <div className="mt-4 grid gap-3 text-sm">
             <div>
@@ -136,7 +135,7 @@ function ReferenceCalibrationPanel({
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium uppercase text-stone-500">Calibrated height</p>
+              <p className="text-xs font-medium uppercase text-stone-500">Height estimate</p>
               <p className="mt-1 font-semibold text-stone-950">
                 {calibration ? formatLength(calibration.calibratedHeightCm) : "Mark both reference edges"}
               </p>

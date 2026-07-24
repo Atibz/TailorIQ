@@ -472,7 +472,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
   const [uploadStatus, setUploadStatus] = useState(emptyUploadStatus);
   const [activeCapture, setActiveCapture] = useState("front");
   const [guidelines, setGuidelines] = useState(() => getEmptyGuidelines(captureSettings));
-  const [poseStatus, setPoseStatus] = useState("Pose model not loaded");
+  const [poseStatus, setPoseStatus] = useState("Photo checks not ready");
   const [poseMessage, setPoseMessage] = useState("Start the camera to begin automatic checks");
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef(null);
@@ -554,7 +554,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       return poseLandmarkerRef.current;
     }
 
-    setPoseStatus("Loading MediaPipe Pose");
+    setPoseStatus("Getting photo checks ready");
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
     );
@@ -572,7 +572,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       minTrackingConfidence: 0.6,
     });
 
-    setPoseStatus("MediaPipe Pose ready");
+    setPoseStatus("Photo checks ready");
     return poseLandmarkerRef.current;
   };
 
@@ -681,8 +681,8 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       }
 
       setIsCameraActive(true);
-      setPoseStatus("Loading MediaPipe Pose in background");
-      setPoseMessage("Camera is open. Vision checks are loading.");
+      setPoseStatus("Getting photo checks ready");
+      setPoseMessage("Camera is open. Photo checks are loading.");
 
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -691,7 +691,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       animationFrameRef.current = requestAnimationFrame(detectPose);
 
       const poseResult = await Promise.allSettled([
-        withTimeout(setPoseMode("VIDEO"), 12000, "MediaPipe loading timed out"),
+        withTimeout(setPoseMode("VIDEO"), 12000, "Photo checks timed out"),
       ]);
 
       if (poseResult[0].status === "fulfilled") {
@@ -701,10 +701,10 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
           cancelAnimationFrame(animationFrameRef.current);
         }
         animationFrameRef.current = requestAnimationFrame(detectPose);
-        setPoseMessage("Move into the guide so the pose model can validate the frame");
+        setPoseMessage("Move into the guide so the app can check the photo.");
       } else {
-        setPoseStatus("Pose model could not load");
-        setPoseMessage("Camera is open, but pose checks could not load. Check internet access.");
+        setPoseStatus("Photo checks could not load");
+        setPoseMessage("Camera is open, but photo checks could not load. Check internet access.");
       }
     } catch {
       setIsCameraActive(false);
@@ -755,7 +755,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       ...currentPhotos,
         [activeCaptureRef.current]: {
           view: captureLabels[activeCaptureRef.current],
-          fileName: `${captureLabels[activeCaptureRef.current]} MediaPipe capture`,
+          fileName: `${captureLabels[activeCaptureRef.current]} guided camera capture`,
           preview,
           censoredPreview,
           poseMetrics,
@@ -794,7 +794,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       const poseLandmarker = await withTimeout(
         setPoseMode("IMAGE"),
         12000,
-        "MediaPipe image check timed out",
+        "Photo check timed out",
       );
       const frameMetrics = preprocessImageSource(image);
       const result = poseLandmarker.detect(image);
@@ -847,7 +847,7 @@ export function useMeasurementCapture({ initialPhotos, referenceObject, scaleMod
       }));
       setError(
         uploadError.message?.includes("timed out")
-          ? "Photo check timed out while loading the pose model. Check your internet connection and try again."
+          ? "Photo check timed out. Check your internet connection and try again."
           : "Could not validate that photo. Try a clearer full-body image.",
       );
     }
