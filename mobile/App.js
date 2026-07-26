@@ -18,10 +18,10 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
+import * as Speech from "expo-speech";
 
 import { buildMeasurementList, getProfileFields, roundMeasurement } from "./src/constants/measurementFields";
 import { requestMobileMeasurements } from "./src/services/measurementApi";
-import { getCaptureRejectionMessage, validateCapturedPhoto } from "./src/services/captureValidationApi";
 import { deleteMobileReminder, fetchMobileReminders, saveMobileReminder } from "./src/services/reminderApi";
 import { deleteMobileStyle, fetchMobileStyles, saveMobileStyle } from "./src/services/styleApi";
 import {
@@ -69,6 +69,61 @@ const styleCategories = [
   "Bridal",
   "Other",
 ];
+
+const selfCaptureSetupSteps = [
+  "Place your phone upright on a table.",
+  "Support it with books or an open laptop so it stays steady.",
+  "Step back slowly until your whole body fits inside the guide.",
+  "Wear fitted clothes and stand straight with arms slightly away from the body.",
+];
+
+function getCameraVoiceInstruction({ captureMode, captureStep, captureRetryPaused }) {
+  if (captureRetryPaused) {
+    return "Adjust the phone, make sure your full body is visible, then tap retry.";
+  }
+
+  if (captureMode === "self") {
+    return captureStep === "front"
+      ? "Front view. Step back until your whole body is visible. Stand straight with your arms slightly away from your body."
+      : "Side view. Turn fully to your side. Keep your full body visible and your arms slightly away from your body.";
+  }
+
+  return captureStep === "front"
+    ? "Frame the full front view from head to feet, then take the photo."
+    : "Frame the full side view from head to feet, then take the photo.";
+}
+
+function isNoisyPhotoWarning(message = "") {
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("close to the frame edge") ||
+    normalizedMessage.includes("near the frame edge") ||
+    normalizedMessage.includes("move back only if") ||
+    normalizedMessage.includes("very close to the frame edge") ||
+    normalizedMessage.includes("person is too close to the camera")
+  );
+}
+
+function cleanPhotoWarnings(warnings = []) {
+  return warnings.filter((warning) => !isNoisyPhotoWarning(warning));
+}
+
+function cleanPhotoMessage(message = "") {
+  return isNoisyPhotoWarning(message) ? "" : message;
+}
+
+function buildPhotoReadyCheck(view, message = "Photo ready for analysis.") {
+  return {
+    ok: true,
+    engine: "final-measurement-analysis",
+    view,
+    message,
+    warnings: [],
+    metrics: null,
+    checkedAt: new Date().toISOString(),
+  };
+}
 
 function BrandMark({ compact = false }) {
   return (
@@ -270,6 +325,7 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [captureStep, setCaptureStep] = useState("front");
   const [captureMode, setCaptureMode] = useState("assisted");
+  const [measurementPhotoSource, setMeasurementPhotoSource] = useState("camera");
   const [capturedPhotos, setCapturedPhotos] = useState({ front: null, side: null });
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -280,6 +336,7 @@ export default function App() {
   const [captureFlashVisible, setCaptureFlashVisible] = useState(false);
   const [photoCheckStatus, setPhotoCheckStatus] = useState("");
   const [retakeOnlyView, setRetakeOnlyView] = useState(null);
+  const [selfInstructionReady, setSelfInstructionReady] = useState(false);
   const [measurementDetails, setMeasurementDetails] = useState({
     profile: "female",
     height: "",
@@ -327,6 +384,7 @@ export default function App() {
   const cameraRef = useRef(null);
   const draftSaveTimerRef = useRef(null);
   const draftCloudIdsRef = useRef({});
+  const lastCameraInstructionRef = useRef("");
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -388,6 +446,7 @@ export default function App() {
         measurementDetails,
         capturedPhotos,
         captureMode,
+        measurementPhotoSource,
         measurementResult,
         generatedMeasurements,
         reviewMeasurements,
@@ -426,6 +485,7 @@ export default function App() {
     capturedPhotos,
     generatedMeasurements,
     measurementDetails,
+    measurementPhotoSource,
     measurementResult,
     profile,
     reviewMeasurements,
@@ -433,16 +493,63 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (screen !== "capture" || captureMode !== "self" || !cameraReady || capturing || captureCoolingDown || captureRetryPaused || countdown !== null) {
+    if (screen !== "capture" || !cameraReady || capturing || captureCoolingDown) {
+      return undefined;
+    }
+
+    const instruction = getCameraVoiceInstruction({ captureMode, captureStep, captureRetryPaused });
+    const instructionKey = `${captureMode}:${captureStep}:${captureRetryPaused}:${instruction}`;
+
+    if (lastCameraInstructionRef.current === instructionKey) {
+      return undefined;
+    }
+
+    lastCameraInstructionRef.current = instructionKey;
+
+    if (captureMode === "self") {
+      setSelfInstructionReady(false);
+    }
+
+    Speech.stop();
+    Speech.speak(instruction, {
+      rate: 0.88,
+      onDone: () => {
+        if (captureMode === "self") {
+          setSelfInstructionReady(true);
+        }
+      },
+      onStopped: () => {
+        if (captureMode === "self") {
+          setSelfInstructionReady(true);
+        }
+      },
+      onError: () => {
+        if (captureMode === "self") {
+          setSelfInstructionReady(true);
+        }
+      },
+    });
+
+    const fallbackTimer = setTimeout(() => {
+      if (captureMode === "self") {
+        setSelfInstructionReady(true);
+      }
+    }, captureStep === "side" ? 5200 : 4300);
+
+    return () => clearTimeout(fallbackTimer);
+  }, [cameraReady, captureCoolingDown, captureMode, captureRetryPaused, captureStep, capturing, screen]);
+
+  useEffect(() => {
+    if (screen !== "capture" || captureMode !== "self" || !cameraReady || !selfInstructionReady || capturing || captureCoolingDown || captureRetryPaused || countdown !== null) {
       return undefined;
     }
 
     const startTimer = setTimeout(() => {
       setCountdown(5);
-    }, 900);
+    }, 350);
 
     return () => clearTimeout(startTimer);
-  }, [cameraReady, captureCoolingDown, captureMode, captureRetryPaused, capturing, countdown, screen]);
+  }, [cameraReady, captureCoolingDown, captureMode, captureRetryPaused, capturing, countdown, screen, selfInstructionReady]);
 
   useEffect(() => {
     if (screen !== "capture" || captureMode !== "self" || countdown === null) {
@@ -465,6 +572,25 @@ export default function App() {
 
     return () => clearTimeout(tickTimer);
   }, [captureMode, countdown, screen]);
+
+  useEffect(() => {
+    if (screen !== "capture" || captureMode !== "self" || countdown === null || countdown <= 0) {
+      return;
+    }
+
+    Speech.stop();
+    Speech.speak(String(countdown), { rate: 0.95 });
+  }, [captureMode, countdown, screen]);
+
+  useEffect(() => {
+    if (screen === "capture") {
+      return undefined;
+    }
+
+    Speech.stop();
+    lastCameraInstructionRef.current = "";
+    return undefined;
+  }, [screen]);
 
   useEffect(() => {
     let mounted = true;
@@ -795,6 +921,7 @@ export default function App() {
 
   const openCaptureCamera = async ({ mode = "assisted", step = "front", retakeView = null } = {}) => {
     setStatus("");
+    setMeasurementPhotoSource("camera");
     setCaptureMode(mode);
     setCaptureStep(step);
     setRetakeOnlyView(retakeView);
@@ -803,6 +930,8 @@ export default function App() {
     setCountdown(null);
     setCaptureRetryPaused(false);
     setPhotoCheckStatus("");
+    setSelfInstructionReady(false);
+    lastCameraInstructionRef.current = "";
 
     if (!cameraPermission?.granted) {
       const permissionResult = await requestCameraPermission();
@@ -821,6 +950,7 @@ export default function App() {
     setActiveDraftId(`draft-${Date.now()}`);
     setCaptureStep("front");
     setCaptureMode(profile?.mode === "client" ? "self" : "assisted");
+    setMeasurementPhotoSource("camera");
     setCapturedPhotos({ front: null, side: null });
     setMeasurementResult(null);
     setGeneratedMeasurements([]);
@@ -832,14 +962,11 @@ export default function App() {
     setCaptureRetryPaused(false);
     setCaptureFlashVisible(false);
     setPhotoCheckStatus("");
+    setSelfInstructionReady(false);
+    lastCameraInstructionRef.current = "";
     setRetakeOnlyView(null);
 
-    if (profile?.mode === "client") {
-      setScreen("captureChoice");
-      return;
-    }
-
-    await openCaptureCamera({ mode: "assisted", step: "front" });
+    setScreen("captureChoice");
   };
 
   const handleStartManualInput = () => {
@@ -887,12 +1014,15 @@ export default function App() {
     setGeneratedMeasurements(draft.generatedMeasurements || []);
     setReviewMeasurements(draft.reviewMeasurements || []);
     setCaptureMode(draft.captureMode || (profile?.mode === "client" ? "self" : "assisted"));
+    setMeasurementPhotoSource(draft.measurementPhotoSource || "camera");
     setCaptureStep(draft.capturedPhotos?.front?.uri && !draft.capturedPhotos?.side?.uri ? "side" : "front");
     setCameraReady(false);
     setCountdown(null);
     setCaptureCoolingDown(false);
     setCaptureRetryPaused(false);
     setPhotoCheckStatus("");
+    setSelfInstructionReady(false);
+    lastCameraInstructionRef.current = "";
     setRetakeOnlyView(null);
 
     if (draft.stage === "review" && draft.reviewMeasurements?.length) {
@@ -914,7 +1044,7 @@ export default function App() {
       }
     }
 
-    setScreen(profile?.mode === "client" ? "captureChoice" : "capture");
+    setScreen("captureChoice");
   };
 
   const handleCapturePhoto = async () => {
@@ -936,12 +1066,7 @@ export default function App() {
       setCaptureFlashVisible(true);
       Vibration.vibrate(80);
       setTimeout(() => setCaptureFlashVisible(false), 260);
-      setPhotoCheckStatus("Checking photo...");
-
-      const captureValidation = await validateCapturedPhoto({
-        photo,
-        view: captureStep,
-      });
+      const captureValidation = buildPhotoReadyCheck(captureStep, "Photo captured. Review it before analysis.");
 
       setCapturedPhotos((currentPhotos) => ({
         ...currentPhotos,
@@ -952,32 +1077,40 @@ export default function App() {
         },
       }));
       setPhotoCheckStatus(captureValidation.message || "Photo accepted.");
+      Speech.stop();
 
       if (retakeOnlyView) {
+        Speech.speak(`${captureStep === "front" ? "Front" : "Side"} photo accepted. Review your photos.`, { rate: 0.92 });
         setRetakeOnlyView(null);
         setTimeout(() => {
           setCaptureCoolingDown(false);
           setScreen("reviewPhotos");
         }, 900);
       } else if (captureStep === "front") {
+        Speech.speak("Front photo accepted. Turn to your side for the side photo.", { rate: 0.92 });
         setTimeout(() => {
           setCaptureStep("side");
           setPhotoCheckStatus("");
+          setSelfInstructionReady(false);
+          lastCameraInstructionRef.current = "";
           setCaptureCoolingDown(false);
         }, 1300);
       } else {
+        Speech.speak("Side photo accepted. Review your photos.", { rate: 0.92 });
         setTimeout(() => {
           setCaptureCoolingDown(false);
           setScreen("reviewPhotos");
         }, 900);
       }
     } catch (error) {
-      setStatus(getCaptureRejectionMessage(error, captureStep));
+      setStatus(error.message || `${captureStep === "front" ? "Front" : "Side"} photo could not be captured. Try again.`);
       setPhotoCheckStatus("");
       setCountdown(null);
       if (captureMode === "self") {
         setCaptureRetryPaused(true);
       }
+      Speech.stop();
+      Speech.speak(`${captureStep === "front" ? "Front" : "Side"} photo could not be captured. Try again.`, { rate: 0.9 });
       setCaptureCoolingDown(false);
     } finally {
       setCapturing(false);
@@ -989,15 +1122,89 @@ export default function App() {
     setPhotoCheckStatus("");
     setCountdown(null);
     setCaptureCoolingDown(false);
+    setSelfInstructionReady(false);
+    lastCameraInstructionRef.current = "";
     setCaptureRetryPaused(false);
   };
 
   const handleRetakePhoto = async (view) => {
+    if (measurementPhotoSource === "upload") {
+      await handleUploadMeasurementPhoto(view);
+      return;
+    }
+
     await openCaptureCamera({
       mode: captureMode || (profile?.mode === "client" ? "self" : "assisted"),
       step: view,
       retakeView: view,
     });
+  };
+
+  const handleStartPhotoUpload = () => {
+    setStatus("");
+    setMeasurementPhotoSource("upload");
+    setCaptureMode("upload");
+    setCaptureStep("front");
+    setRetakeOnlyView(null);
+    setCameraReady(false);
+    setCapturing(false);
+    setCountdown(null);
+    setCaptureCoolingDown(false);
+    setCaptureRetryPaused(false);
+    setPhotoCheckStatus("");
+    setSelfInstructionReady(false);
+    lastCameraInstructionRef.current = "";
+    setScreen("reviewPhotos");
+  };
+
+  const handleUploadMeasurementPhoto = async (view) => {
+    setStatus("");
+    setPhotoCheckStatus("");
+    setSaving(true);
+
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        setStatus("Photo library permission is needed to upload measurement photos.");
+        setPhotoCheckStatus("");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.72,
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        setPhotoCheckStatus("");
+        return;
+      }
+
+      const photo = {
+        ...result.assets[0],
+        width: result.assets[0].width,
+        height: result.assets[0].height,
+        fileName: `${view === "front" ? "Front" : "Side"} uploaded photo`,
+      };
+      const captureValidation = buildPhotoReadyCheck(view, "Photo selected. Review it before analysis.");
+
+      setCapturedPhotos((currentPhotos) => ({
+        ...currentPhotos,
+        [view]: {
+          ...photo,
+          captureValidation,
+          photoCheck: captureValidation,
+        },
+      }));
+      setPhotoCheckStatus(`${view === "front" ? "Front" : "Side"} photo selected.`);
+    } catch (error) {
+      setStatus(error.message || `${view === "front" ? "Front" : "Side"} photo could not be selected. Try again.`);
+      setPhotoCheckStatus("");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAnalyzePhotos = async () => {
@@ -1700,11 +1907,13 @@ export default function App() {
   }
 
   if (screen === "captureChoice") {
+    const isClientMode = profile?.mode === "client";
+
     return (
       <AppShell active="measure" onNavigate={handleNavigate}>
         <AppHeader
-          title="Choose camera setup"
-          subtitle="Pick the capture flow that matches who is holding the phone."
+          title="Choose photo source"
+          subtitle="Use the camera now or upload clear front and side photos."
           onBack={() => setScreen("home")}
         />
 
@@ -1712,21 +1921,97 @@ export default function App() {
           {status ? <Text style={styles.errorText}>{status}</Text> : null}
 
           <View style={styles.actionGrid}>
+            {isClientMode ? (
+              <FeatureTile
+                icon="me"
+                title="Take it myself"
+                text="Use the front camera with an automatic countdown."
+                onPress={() => {
+                  setStatus("");
+                  setScreen("selfCaptureSetup");
+                }}
+                tone="gold"
+              />
+            ) : (
+              <FeatureTile
+                icon="cam"
+                title="Use camera"
+                text="Capture front and side photos now."
+                onPress={() => openCaptureCamera({ mode: "assisted", step: "front" })}
+                tone="gold"
+              />
+            )}
+            {isClientMode ? (
+              <FeatureTile
+                icon="cam"
+                title="Someone is helping"
+                text="Use the back camera with the guided shutter flow."
+                onPress={() => openCaptureCamera({ mode: "assisted", step: "front" })}
+              />
+            ) : null}
             <FeatureTile
-              icon="me"
-              title="Take it myself"
-              text="Use the front camera with an automatic countdown."
-              onPress={() => openCaptureCamera({ mode: "self", step: "front" })}
-              tone="gold"
-            />
-            <FeatureTile
-              icon="cam"
-              title="Someone is helping"
-              text="Use the back camera with the guided shutter flow."
-              onPress={() => openCaptureCamera({ mode: "assisted", step: "front" })}
+              icon="img"
+              title="Upload photos"
+              text="Choose existing front and side photos from your gallery."
+              onPress={handleStartPhotoUpload}
             />
           </View>
         </View>
+      </AppShell>
+    );
+  }
+
+  if (screen === "selfCaptureSetup") {
+    return (
+      <AppShell active="measure" onNavigate={handleNavigate}>
+        <AppHeader
+          title="Set up your phone"
+          subtitle="Use this before the automatic front and side capture starts."
+          onBack={() => setScreen("captureChoice")}
+        />
+
+        <ScrollView contentContainerStyle={styles.reviewContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.selfSetupVisual}>
+            <View style={styles.selfSetupFloor} />
+            <View style={styles.selfSetupBooks}>
+              <View style={[styles.selfSetupBook, styles.selfSetupBookGold]} />
+              <View style={styles.selfSetupBook} />
+              <View style={[styles.selfSetupBook, styles.selfSetupBookDark]} />
+            </View>
+            <View style={styles.selfSetupPhone}>
+              <View style={styles.selfSetupPhoneSpeaker} />
+              <View style={styles.selfSetupPhoneGuide} />
+            </View>
+            <View style={styles.selfSetupPath} />
+            <Text style={styles.selfSetupStepsLabel}>5-7 steps</Text>
+            <View style={styles.selfSetupPerson}>
+              <View style={styles.selfSetupPersonHead} />
+              <View style={styles.selfSetupPersonBody} />
+              <View style={styles.selfSetupPersonLegs}>
+                <View style={styles.selfSetupPersonLeg} />
+                <View style={styles.selfSetupPersonLeg} />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.setupStepList}>
+            {selfCaptureSetupSteps.map((step, index) => (
+              <View key={step} style={styles.setupStepRow}>
+                <View style={styles.setupStepNumber}>
+                  <Text style={styles.setupStepNumberText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.setupStepText}>{step}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Pressable
+            onPress={() => openCaptureCamera({ mode: "self", step: "front" })}
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.primaryButtonText}>Continue</Text>
+          </Pressable>
+        </ScrollView>
       </AppShell>
     );
   }
@@ -1826,16 +2111,21 @@ export default function App() {
   }
 
   if (screen === "reviewPhotos") {
+    const isUploadFlow = measurementPhotoSource === "upload";
+
     return (
       <AppShell active="measure" onNavigate={handleNavigate}>
         <AppHeader
-          title="Review capture"
-          subtitle="Check the photos, add the height anchor, then run analysis."
+          title={isUploadFlow ? "Upload photos" : "Review capture"}
+          subtitle={isUploadFlow
+            ? "Choose clear front and side photos, then run analysis."
+            : "Check the photos, add the height anchor, then run analysis."}
           onBack={() => setScreen("home")}
         />
 
         <ScrollView contentContainerStyle={styles.reviewContent}>
           {status ? <Text style={styles.errorText}>{status}</Text> : null}
+          {photoCheckStatus ? <Text style={styles.noticeText}>{photoCheckStatus}</Text> : null}
 
           <View style={styles.detailsPanel}>
             <Text style={styles.detailsTitle}>Measurement setup</Text>
@@ -1897,8 +2187,14 @@ export default function App() {
                   <>
               <View style={styles.photoCardHeader}>
                 <Text style={styles.photoTitle}>{view === "front" ? "Front view" : "Side view"}</Text>
-                <Pressable onPress={() => handleRetakePhoto(view)} style={styles.retakeButton}>
-                  <Text style={styles.retakeButtonText}>Retake</Text>
+                <Pressable
+                  disabled={saving}
+                  onPress={() => (isUploadFlow ? handleUploadMeasurementPhoto(view) : handleRetakePhoto(view))}
+                  style={({ pressed }) => [styles.retakeButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.retakeButtonText}>
+                    {capturedPhotos[view]?.uri ? (isUploadFlow ? "Replace" : "Retake") : "Choose"}
+                  </Text>
                 </Pressable>
               </View>
 
@@ -1909,15 +2205,20 @@ export default function App() {
                   resizeMode="contain"
                 />
               ) : (
-                <View style={styles.emptyPhotoPreview}>
+                <Pressable
+                  disabled={saving}
+                  onPress={() => (isUploadFlow ? handleUploadMeasurementPhoto(view) : handleRetakePhoto(view))}
+                  style={({ pressed }) => [styles.emptyPhotoPreview, pressed && styles.pressed]}
+                >
                   <Text style={styles.emptyPhotoText}>No photo yet</Text>
-                </View>
+                  {isUploadFlow ? <Text style={styles.emptyPhotoHint}>Tap to choose {view} photo</Text> : null}
+                </Pressable>
               )}
-              {validation?.message ? (
-                <Text style={styles.photoCheckText}>{validation.message}</Text>
+              {cleanPhotoMessage(validation?.message) ? (
+                <Text style={styles.photoCheckText}>{cleanPhotoMessage(validation.message)}</Text>
               ) : null}
-              {validation?.warnings?.length ? (
-                <Text style={styles.photoWarningText}>{validation.warnings.join(" ")}</Text>
+              {cleanPhotoWarnings(validation?.warnings || []).length ? (
+                <Text style={styles.photoWarningText}>{cleanPhotoWarnings(validation.warnings).join(" ")}</Text>
               ) : null}
                   </>
                 );
@@ -3379,6 +3680,157 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: palette.black,
   },
+  selfSetupVisual: {
+    backgroundColor: "#15120b",
+    borderColor: "rgba(255,211,122,0.35)",
+    borderRadius: 24,
+    borderWidth: 1,
+    height: 360,
+    marginBottom: 16,
+    overflow: "hidden",
+    position: "relative",
+  },
+  selfSetupFloor: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    bottom: 38,
+    height: 8,
+    left: 24,
+    position: "absolute",
+    right: 24,
+  },
+  selfSetupBooks: {
+    bottom: 50,
+    left: 34,
+    position: "absolute",
+  },
+  selfSetupBook: {
+    backgroundColor: "#ffffff",
+    borderRadius: 6,
+    height: 22,
+    marginTop: 4,
+    width: 96,
+  },
+  selfSetupBookGold: {
+    backgroundColor: palette.amber,
+    width: 82,
+  },
+  selfSetupBookDark: {
+    backgroundColor: "#2a2412",
+    width: 76,
+  },
+  selfSetupPhone: {
+    alignItems: "center",
+    backgroundColor: "#050505",
+    borderColor: palette.amber,
+    borderRadius: 18,
+    borderWidth: 5,
+    bottom: 112,
+    height: 120,
+    justifyContent: "center",
+    left: 72,
+    position: "absolute",
+    width: 74,
+  },
+  selfSetupPhoneSpeaker: {
+    backgroundColor: "rgba(255,255,255,0.64)",
+    borderRadius: 999,
+    height: 4,
+    position: "absolute",
+    top: 10,
+    width: 28,
+  },
+  selfSetupPhoneGuide: {
+    borderColor: "rgba(255,255,255,0.68)",
+    borderRadius: 24,
+    borderWidth: 1,
+    height: 70,
+    width: 36,
+  },
+  selfSetupPath: {
+    borderColor: palette.amber,
+    borderStyle: "dashed",
+    borderTopWidth: 1,
+    bottom: 128,
+    left: 150,
+    position: "absolute",
+    width: 128,
+  },
+  selfSetupStepsLabel: {
+    backgroundColor: palette.amber,
+    borderRadius: 999,
+    bottom: 108,
+    color: palette.black,
+    fontSize: 12,
+    fontWeight: "900",
+    left: 174,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    position: "absolute",
+  },
+  selfSetupPerson: {
+    alignItems: "center",
+    bottom: 54,
+    position: "absolute",
+    right: 50,
+  },
+  selfSetupPersonHead: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    height: 36,
+    width: 32,
+  },
+  selfSetupPersonBody: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    height: 82,
+    marginTop: 3,
+    width: 58,
+  },
+  selfSetupPersonLegs: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: -1,
+  },
+  selfSetupPersonLeg: {
+    backgroundColor: "#ffffff",
+    height: 86,
+    width: 14,
+  },
+  setupStepList: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  setupStepRow: {
+    alignItems: "center",
+    backgroundColor: palette.panel,
+    borderColor: "rgba(232,216,173,0.84)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    padding: 14,
+  },
+  setupStepNumber: {
+    alignItems: "center",
+    backgroundColor: "#15120b",
+    borderRadius: 999,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
+  setupStepNumberText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  setupStepText: {
+    color: "#4b4130",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
   cameraScreen: {
     flex: 1,
     backgroundColor: "#000000",
@@ -3871,6 +4323,12 @@ const styles = StyleSheet.create({
     color: "#d7c9a2",
     fontSize: 14,
     fontWeight: "800",
+  },
+  emptyPhotoHint: {
+    color: "#fff5d6",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 8,
   },
   photoCheckText: {
     color: "#0f766e",

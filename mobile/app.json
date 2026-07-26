@@ -10,7 +10,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "TailorIQ uses the camera to capture front and side photos for measurement review.",
-        "NSPhotoLibraryUsageDescription": "TailorIQ lets you choose style images from your photo library.",
+        "NSPhotoLibraryUsageDescription": "TailorIQ lets you choose measurement photos and style images from your photo library.",
         "NSUserNotificationsUsageDescription": "TailorIQ sends reminder alerts for fittings, pickups, and follow-ups you save."
       }
     },

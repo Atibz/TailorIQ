@@ -664,7 +664,7 @@ function getFrameWarnings(metrics, label) {
   return warnings;
 }
 
-function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
+function getBodyFitWarnings(metrics, label, { minimum }) {
   const bodyHeightRatio = metrics?.bodyHeightRatio;
 
   if (!Number.isFinite(bodyHeightRatio)) {
@@ -673,10 +673,6 @@ function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
 
   if (bodyHeightRatio < minimum) {
     return [`${label} person is too small in the frame. Move the camera closer while keeping head and feet visible.`];
-  }
-
-  if (bodyHeightRatio > maximum) {
-    return [`${label} person is very close to the frame edge. Move back only if the head or feet are nearly cut off.`];
   }
 
   return [];

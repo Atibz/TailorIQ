@@ -1,8 +1,11 @@
 import "react-native-url-polyfill/auto";
 
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 
 const measurementApiUrl = process.env.EXPO_PUBLIC_SEGMENTATION_API_URL?.trim();
+const REQUEST_TIMEOUT_MS = 45000;
+const MAX_PHOTO_EDGE = 1200;
 
 function joinMeasurementPath(path) {
   if (!measurementApiUrl) {
@@ -38,12 +41,50 @@ function getMeasurementConfigError() {
   return "Measurement service is not connected. Add EXPO_PUBLIC_SEGMENTATION_API_URL in mobile/.env.";
 }
 
-async function readPhotoAsDataUrl(photo) {
+function withTimeout(promise, milliseconds, errorMessage) {
+  let timeoutId;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(errorMessage)), milliseconds);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+async function preparePhotoForBackend(photo) {
   if (!photo?.uri) {
     throw new Error("Front and side photos are required.");
   }
 
-  const base64 = await FileSystem.readAsStringAsync(photo.uri, {
+  const width = Number(photo.width);
+  const height = Number(photo.height);
+  const longestEdge = Math.max(width || 0, height || 0);
+  const resizeAction = longestEdge > MAX_PHOTO_EDGE
+    ? width >= height
+      ? { resize: { width: MAX_PHOTO_EDGE } }
+      : { resize: { height: MAX_PHOTO_EDGE } }
+    : null;
+
+  const preparedPhoto = await ImageManipulator.manipulateAsync(
+    photo.uri,
+    resizeAction ? [resizeAction] : [],
+    {
+      compress: 0.72,
+      format: ImageManipulator.SaveFormat.JPEG,
+    },
+  );
+
+  return {
+    ...photo,
+    ...preparedPhoto,
+    mimeType: "image/jpeg",
+    originalUri: photo.uri,
+  };
+}
+
+async function readPhotoAsDataUrl(photo) {
+  const preparedPhoto = await preparePhotoForBackend(photo);
+  const base64 = await FileSystem.readAsStringAsync(preparedPhoto.uri, {
     encoding: FileSystem.EncodingType?.Base64 || "base64",
   });
 
@@ -60,7 +101,7 @@ export async function requestMobileMeasurements({ frontPhoto, sidePhoto, profile
     readPhotoAsDataUrl(sidePhoto),
   ]);
 
-  const response = await fetch(getMeasurementUrl(), {
+  const response = await withTimeout(fetch(getMeasurementUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -81,7 +122,7 @@ export async function requestMobileMeasurements({ frontPhoto, sidePhoto, profile
         side: sidePhoto.captureValidation?.metrics || sidePhoto.photoCheck?.metrics || null,
       },
     }),
-  });
+  }), REQUEST_TIMEOUT_MS, "Measurement analysis timed out. Try smaller, clearer photos or check the connection.");
 
   if (!response.ok) {
     let message = `Measurement service failed with ${response.status}`;
@@ -112,7 +153,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
 
   const photoCheckUrl = getPhotoCheckUrl();
   const image = await readPhotoAsDataUrl(photo);
-  let response = await fetch(photoCheckUrl, {
+  let response = await withTimeout(fetch(photoCheckUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -121,7 +162,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
       view,
       image,
     }),
-  });
+  }), REQUEST_TIMEOUT_MS, "Photo check timed out. Try a smaller, clearer photo or check the connection.");
 
   let result = null;
 
@@ -135,7 +176,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
     const fallbackPhotoCheckUrl = joinMeasurementPath("/photo-check");
 
     if (fallbackPhotoCheckUrl !== photoCheckUrl) {
-      response = await fetch(fallbackPhotoCheckUrl, {
+      response = await withTimeout(fetch(fallbackPhotoCheckUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -144,7 +185,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
           view,
           image,
         }),
-      });
+      }), REQUEST_TIMEOUT_MS, "Photo check timed out. Try a smaller, clearer photo or check the connection.");
 
       try {
         result = await response.json();
