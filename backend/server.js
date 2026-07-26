@@ -676,7 +676,7 @@ function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
   }
 
   if (bodyHeightRatio > maximum) {
-    return [`${label} person is too close to the camera. Move the camera back so the full body fits comfortably.`];
+    return [`${label} person is very close to the frame edge. Move back only if the head or feet are nearly cut off.`];
   }
 
   return [];
@@ -812,7 +812,7 @@ function getPhotoCheckResult({ raster, view = "front" }) {
   const frameWarnings = getFrameWarnings(metrics, label);
   const fitWarnings = getBodyFitWarnings(metrics, label, {
     minimum: view === "side" ? 0.38 : 0.48,
-    maximum: view === "side" ? 0.96 : 0.94,
+    maximum: view === "side" ? 0.99 : 0.99,
   });
   const center = metrics.silhouetteLevels.bodyCenterX;
   const centerWarning = center < 0.24 || center > 0.76
@@ -861,8 +861,8 @@ function validateCapturePayload(payload) {
   warnings.push(
     ...getFrameWarnings(frontPose, "Front view"),
     ...getFrameWarnings(sidePose, "Side view"),
-    ...getBodyFitWarnings(frontPose, "Front view", { minimum: 0.48, maximum: 0.94 }),
-    ...getBodyFitWarnings(sidePose, "Side view", { minimum: 0.38, maximum: 0.96 }),
+    ...getBodyFitWarnings(frontPose, "Front view", { minimum: 0.48, maximum: 0.99 }),
+    ...getBodyFitWarnings(sidePose, "Side view", { minimum: 0.38, maximum: 0.99 }),
   );
 
   const frontLandmarks = getLandmarkSummary(frontPose);
