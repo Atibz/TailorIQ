@@ -1,16 +1,104 @@
-# React + Vite
+# TailorIQ
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+TailorIQ is a measurement workspace for tailors and clients. The project currently contains the web app, the measurement backend, and the Expo mobile app in one repository so the product can grow from one source of truth.
 
-Currently, two official plugins are available:
+## Project Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```text
+TailorIQ/
+  src/              Web app source for the Vite/React app
+  backend/          Node measurement service used for photo analysis
+  mobile/           Expo React Native app
+  public/           Web static assets
+  package.json      Root scripts for web, backend, and mobile workflows
+```
 
-## React Compiler
+The web app remains at the root because Netlify and Vite are already configured around that structure. The mobile app lives in `mobile/`, with its own `package.json`, dependencies, and Expo config.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Environment Files
 
-## Expanding the ESLint configuration
+Create local environment files from the examples:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```text
+.env.local
+backend/.env
+mobile/.env
+```
+
+Web app variables:
+
+```text
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-anon-public-key
+VITE_SEGMENTATION_API_URL=http://localhost:5050/measurements/segment
+```
+
+Mobile app variables:
+
+```text
+EXPO_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-anon-public-key
+EXPO_PUBLIC_SEGMENTATION_API_URL=https://your-backend-url/measurements/segment
+```
+
+Backend variables:
+
+```text
+PORT=5050
+```
+
+Never commit real `.env` files.
+
+## Common Commands
+
+Run the web app:
+
+```bash
+npm run web:dev
+```
+
+Run the backend:
+
+```bash
+npm run backend:dev
+```
+
+Run the mobile app:
+
+```bash
+npm run mobile:start
+```
+
+Build the web app:
+
+```bash
+npm run web:build
+```
+
+Check the current web build and Expo config:
+
+```bash
+npm run check
+```
+
+## Deployment Notes
+
+Netlify should build the web app from the repository root using:
+
+```bash
+npm install
+npm run build
+```
+
+Render should run the backend using:
+
+```bash
+npm install
+npm start
+```
+
+The mobile app should be opened from the `mobile/` folder through Expo during development.
+
+## Future Shared Code
+
+As the mobile app grows, reusable measurement constants, shorthand rules, validation helpers, and Supabase table helpers should move into a shared package or shared folder. For now, avoid a large migration until both web and mobile flows are stable.

@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import http from "node:http";
 import process from "node:process";
+import jpeg from "jpeg-js";
 
 const PORT = Number(process.env.PORT || 5050);
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
@@ -332,6 +333,36 @@ function parseRaster(raster) {
   };
 }
 
+function getImageBase64(image) {
+  if (typeof image !== "string") {
+    return "";
+  }
+
+  const commaIndex = image.indexOf(",");
+
+  return commaIndex >= 0 ? image.slice(commaIndex + 1) : image;
+}
+
+function decodeImageToRaster(image) {
+  const imageBase64 = getImageBase64(image);
+
+  if (!imageBase64) {
+    return null;
+  }
+
+  try {
+    const decodedImage = jpeg.decode(Buffer.from(imageBase64, "base64"), { useTArray: true });
+
+    return {
+      width: decodedImage.width,
+      height: decodedImage.height,
+      rgbaBase64: Buffer.from(decodedImage.data).toString("base64"),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function getPixel(raster, x, y) {
   const index = (y * raster.width + x) * 4;
 
@@ -649,6 +680,152 @@ function getBodyFitWarnings(metrics, label, { minimum, maximum }) {
   }
 
   return [];
+}
+
+function getRasterFrameMetrics(raster) {
+  if (!raster?.data?.length) {
+    return null;
+  }
+
+  let total = 0;
+  let edgeTotal = 0;
+  const samples = [];
+  const step = Math.max(Math.floor(Math.sqrt((raster.width * raster.height) / 12000)), 1);
+
+  for (let y = 0; y < raster.height; y += step) {
+    for (let x = 0; x < raster.width; x += step) {
+      const [red, green, blue] = getPixel(raster, x, y);
+      const value = (red + green + blue) / 3;
+      samples.push(value);
+      total += value;
+
+      if (x >= step) {
+        const [previousRed, previousGreen, previousBlue] = getPixel(raster, x - step, y);
+        edgeTotal += Math.abs(value - (previousRed + previousGreen + previousBlue) / 3);
+      }
+    }
+  }
+
+  const brightness = total / Math.max(samples.length, 1);
+  const variance = samples.reduce((sum, value) => sum + (value - brightness) ** 2, 0) / Math.max(samples.length, 1);
+  const contrast = Math.sqrt(variance);
+  const sharpness = edgeTotal / Math.max(samples.length, 1);
+
+  return {
+    brightness: Math.round(brightness),
+    contrast: Math.round(contrast),
+    edgeDensity: Number((sharpness / 255).toFixed(3)),
+    sharpness: Math.round(sharpness),
+  };
+}
+
+function getMaskBox(mask, width, height) {
+  let minX = width;
+  let maxX = 0;
+  let minY = height;
+  let maxY = 0;
+  let area = 0;
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] !== 1) {
+      continue;
+    }
+
+    const x = index % width;
+    const y = Math.floor(index / width);
+    area += 1;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  if (area === 0) {
+    return null;
+  }
+
+  return { area, minX, maxX, minY, maxY };
+}
+
+function buildApproximatePoseMetricsFromRaster(raster, view = "front") {
+  if (!raster) {
+    return null;
+  }
+
+  const rawMask = buildForegroundMask(raster);
+  const cleanup = getBodyComponentMask(rawMask, raster.width, raster.height);
+  const box = getMaskBox(cleanup.mask, raster.width, raster.height);
+
+  if (!box) {
+    return null;
+  }
+
+  const bodyTopY = clampValue(box.minY / raster.height, 0, 1);
+  const bodyBottomY = clampValue(box.maxY / raster.height, 0, 1);
+  const bodyHeightRatio = Math.max(bodyBottomY - bodyTopY, 0.01);
+  const bodyCenterX = clampValue(((box.minX + box.maxX) / 2) / raster.width, 0, 1);
+  const level = (ratio) => clampValue(bodyTopY + bodyHeightRatio * ratio, 0.02, 0.98);
+  const widthRatio = Math.max((box.maxX - box.minX) / raster.width, 0.01) / bodyHeightRatio;
+
+  return {
+    landmarkSource: "backend-body-outline",
+    landmarks: [],
+    bodyHeightRatio,
+    shoulderWidthRatio: widthRatio * (view === "side" ? 0.48 : 0.82),
+    hipWidthRatio: widthRatio * (view === "side" ? 0.58 : 0.72),
+    torsoLengthRatio: 0.31,
+    sleeveLengthRatio: 0.33,
+    trouserLengthRatio: 0.58,
+    inseamRatio: 0.44,
+    silhouetteLevels: {
+      bodyCenterX,
+      shoulderY: level(0.2),
+      chestY: level(0.29),
+      underbustY: level(0.36),
+      waistY: level(0.46),
+      hipY: level(0.58),
+      thighY: level(0.68),
+      kneeY: level(0.8),
+      ankleY: level(0.96),
+      bodyTopY,
+      bodyBottomY,
+    },
+    frameMetrics: getRasterFrameMetrics(raster),
+    maskCleanup: cleanup.metadata,
+  };
+}
+
+function getPhotoCheckResult({ raster, view = "front" }) {
+  const parsedRaster = parseRaster(raster);
+  const metrics = buildApproximatePoseMetricsFromRaster(parsedRaster, view);
+  const label = view === "side" ? "Side view" : "Front view";
+
+  if (!metrics) {
+    return {
+      ok: false,
+      metrics: null,
+      warnings: [],
+      message: `${label} could not be checked. Use a clear full-body photo on a plain background.`,
+    };
+  }
+
+  const frameWarnings = getFrameWarnings(metrics, label);
+  const fitWarnings = getBodyFitWarnings(metrics, label, {
+    minimum: view === "side" ? 0.38 : 0.48,
+    maximum: view === "side" ? 0.96 : 0.94,
+  });
+  const center = metrics.silhouetteLevels.bodyCenterX;
+  const centerWarning = center < 0.24 || center > 0.76
+    ? [`${label} is not centered. Move the body toward the middle of the frame.`]
+    : [];
+  const blockingWarnings = [...fitWarnings, ...centerWarning];
+
+  return {
+    ok: blockingWarnings.length === 0,
+    metrics,
+    warnings: [...blockingWarnings, ...frameWarnings],
+    message: blockingWarnings[0] || frameWarnings[0] || `${label} is ready.`,
+  };
 }
 
 function getLandmarkSummary(metrics) {
@@ -1107,6 +1284,7 @@ function readBody(request) {
 const server = http.createServer(async (request, response) => {
   const requestPath = new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
   const measurementPaths = new Set(["/", "/measure", "/measurements/segment"]);
+  const photoCheckPaths = new Set(["/photo-check", "/measurements/photo-check"]);
 
   if (request.method === "OPTIONS") {
     sendJson(response, 204, {});
@@ -1122,10 +1300,10 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (request.method !== "POST" || !measurementPaths.has(requestPath)) {
+  if (request.method !== "POST" || (!measurementPaths.has(requestPath) && !photoCheckPaths.has(requestPath))) {
     sendJson(response, 404, {
       error: "Not found",
-      expected: "POST /measurements/segment",
+      expected: "POST /measurements/segment or POST /measurements/photo-check",
     });
     return;
   }
@@ -1134,6 +1312,24 @@ const server = http.createServer(async (request, response) => {
     const rawBody = await readBody(request);
     const payload = JSON.parse(rawBody);
 
+    if (photoCheckPaths.has(requestPath)) {
+      const view = payload.view === "side" ? "side" : "front";
+      const image = payload.image || payload.images?.[view] || payload.images?.front || payload.images?.side;
+      const raster = payload.raster || decodeImageToRaster(image);
+
+      if (!raster) {
+        sendJson(response, 400, {
+          ok: false,
+          error: "Photo could not be prepared for checking.",
+        });
+        return;
+      }
+
+      const result = getPhotoCheckResult({ raster, view });
+      sendJson(response, result.ok ? 200 : 422, result.ok ? result : { ...result, error: result.message });
+      return;
+    }
+
     if (!payload.images?.front || !payload.images?.side) {
       sendJson(response, 400, {
         error: `Front and side images are required. Received front: ${Boolean(payload.images?.front)}, side: ${Boolean(payload.images?.side)}.`,
@@ -1141,12 +1337,24 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    payload.rasters = {
+      ...(payload.rasters || {}),
+      front: payload.rasters?.front || decodeImageToRaster(payload.images.front),
+      side: payload.rasters?.side || decodeImageToRaster(payload.images.side),
+    };
+
     if (!payload.rasters?.front || !payload.rasters?.side) {
       sendJson(response, 400, {
         error: `Front and side photos could not be prepared for measurement. Received front: ${Boolean(payload.rasters?.front)}, side: ${Boolean(payload.rasters?.side)}.`,
       });
       return;
     }
+
+    payload.poseMetrics = {
+      ...(payload.poseMetrics || {}),
+      front: payload.poseMetrics?.front || buildApproximatePoseMetricsFromRaster(parseRaster(payload.rasters.front), "front"),
+      side: payload.poseMetrics?.side || buildApproximatePoseMetricsFromRaster(parseRaster(payload.rasters.side), "side"),
+    };
 
     const captureValidation = validateCapturePayload(payload);
 

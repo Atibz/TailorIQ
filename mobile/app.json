@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "TailorIQ",
+    "slug": "tailoriq",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "TailorIQ uses the camera to capture front and side photos for measurement review.",
+        "NSPhotoLibraryUsageDescription": "TailorIQ lets you choose style images from your photo library.",
+        "NSUserNotificationsUsageDescription": "TailorIQ sends reminder alerts for fittings, pickups, and follow-ups you save."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

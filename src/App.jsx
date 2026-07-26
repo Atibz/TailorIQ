@@ -1023,6 +1023,15 @@ function normalizeDraft(draft) {
   };
 }
 
+function stripDraftSyncState(draft) {
+  const cleanDraft = { ...draft };
+
+  delete cleanDraft.syncStatus;
+  delete cleanDraft.syncError;
+
+  return cleanDraft;
+}
+
 function loadMeasurementDrafts() {
   try {
     const savedDraft = window.localStorage.getItem(MEASUREMENT_DRAFT_STORAGE_KEY);
@@ -2967,6 +2976,7 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
   const [usernameText, setUsernameText] = useState(currentUser?.username || "");
   const [usernameStatus, setUsernameStatus] = useState(null);
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [profileSettingOpen, setProfileSettingOpen] = useState("");
   const pageContent = {
     help: {
       eyebrow: "Help",
@@ -3030,59 +3040,6 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
           ))}
         </div>
 
-        <div className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-stone-950">Username</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            This is the name people use when sharing measurements with you.
-          </p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <label className="min-w-0 flex-1 text-sm font-semibold text-stone-800">
-              New username
-              <input
-                value={usernameText}
-                onChange={(event) => {
-                  setUsernameText(event.target.value);
-                  setUsernameStatus(null);
-                }}
-                className="mt-2 min-h-11 w-full rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-                placeholder="tailor_username"
-                autoCapitalize="none"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={usernameSaving}
-              onClick={async () => {
-                setUsernameSaving(true);
-                const result = await onChangeUsername(usernameText);
-                setUsernameSaving(false);
-                setUsernameStatus({
-                  type: result.ok ? "success" : "error",
-                  message: result.message,
-                });
-
-                if (result.ok && result.user?.username) {
-                  setUsernameText(result.user.username);
-                }
-              }}
-              className="tiq-primary-action min-h-11 rounded-md px-4 text-sm font-semibold transition sm:self-end"
-            >
-              {usernameSaving ? "Saving..." : "Update username"}
-            </button>
-          </div>
-
-          {usernameStatus && (
-            <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
-              usernameStatus.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-            >
-              {usernameStatus.message}
-            </div>
-          )}
-        </div>
-
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-stone-950">
             {userMode === "client" ? "Client Mode is active" : "Tailor Mode is active"}
@@ -3094,69 +3051,143 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
           </p>
         </div>
 
-        <div className="mt-6 rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-stone-950">Custom shorthand</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-600">
-            Add shorthand your shop already uses. Write one mapping per line, for example: <span className="font-semibold text-stone-950">BL = back length</span> or <span className="font-semibold text-stone-950">BTM = ankle</span>.
-          </p>
-          <textarea
-            className="mt-4 min-h-40 w-full rounded-md border border-stone-300 px-3 py-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-            value={customShorthandText}
-            onChange={(event) => {
-              setCustomShorthandText(event.target.value);
-              setCustomShorthandStatus(null);
-            }}
-            placeholder={`Example:\nBTM = ankle\nHL = front length\nRD = waist to hip`}
-          />
+        <div className="mt-6 rounded-lg border border-stone-200 bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setProfileSettingOpen((currentOpen) => (currentOpen === "username" ? "" : "username"))}
+            className="flex min-h-14 w-full items-center justify-between gap-3 px-4 text-left"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-stone-950">Change username</span>
+              <span className="mt-0.5 block text-xs text-stone-500">Update how people find you.</span>
+            </span>
+            <span className="text-lg font-semibold text-stone-500">{profileSettingOpen === "username" ? "-" : "+"}</span>
+          </button>
 
-          {customShorthandStatus && (
-            <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
-              customShorthandStatus.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-            >
-              {customShorthandStatus.message}
+          {profileSettingOpen === "username" && (
+            <div className="border-t border-stone-100 px-4 py-4">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  value={usernameText}
+                  onChange={(event) => {
+                    setUsernameText(event.target.value);
+                    setUsernameStatus(null);
+                  }}
+                  className="min-h-11 min-w-0 flex-1 rounded-md border border-stone-300 px-3 text-sm font-medium outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                  placeholder="tailor_username"
+                  autoCapitalize="none"
+                />
+                <button
+                  type="button"
+                  disabled={usernameSaving}
+                  onClick={async () => {
+                    setUsernameSaving(true);
+                    const result = await onChangeUsername(usernameText);
+                    setUsernameSaving(false);
+                    setUsernameStatus({
+                      type: result.ok ? "success" : "error",
+                      message: result.message,
+                    });
+
+                    if (result.ok && result.user?.username) {
+                      setUsernameText(result.user.username);
+                    }
+                  }}
+                  className="tiq-primary-action min-h-11 rounded-md px-4 text-sm font-semibold transition"
+                >
+                  {usernameSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+
+              {usernameStatus && (
+                <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
+                  usernameStatus.type === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
+                >
+                  {usernameStatus.message}
+                </div>
+              )}
             </div>
           )}
 
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs leading-5 text-stone-500">
-              If a shorthand is ambiguous, import will stop and ask you to clarify instead of guessing.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                const parsedShorthand = parseCustomShorthandText(customShorthandText);
+          <button
+            type="button"
+            onClick={() => setProfileSettingOpen((currentOpen) => (currentOpen === "shorthand" ? "" : "shorthand"))}
+            className="flex min-h-14 w-full items-center justify-between gap-3 border-t border-stone-100 px-4 text-left"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-stone-950">Customize shorthand</span>
+              <span className="mt-0.5 block text-xs text-stone-500">Teach manual scan your shop terms.</span>
+            </span>
+            <span className="text-lg font-semibold text-stone-500">{profileSettingOpen === "shorthand" ? "-" : "+"}</span>
+          </button>
 
-                if (parsedShorthand.errors.length > 0) {
-                  setCustomShorthandStatus({
-                    type: "error",
-                    message: parsedShorthand.errors.join("; "),
-                  });
-                  return;
-                }
+          {profileSettingOpen === "shorthand" && (
+            <div className="border-t border-stone-100 px-4 py-4">
+              <textarea
+                className="min-h-32 w-full rounded-md border border-stone-300 px-3 py-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                value={customShorthandText}
+                onChange={(event) => {
+                  setCustomShorthandText(event.target.value);
+                  setCustomShorthandStatus(null);
+                }}
+                placeholder={`Example:\nBTM = ankle\nHL = front length\nRD = waist to hip`}
+              />
 
-                onSaveCustomShorthand(parsedShorthand.customMap);
-                setCustomShorthandStatus({
-                  type: "success",
-                  message: "Custom shorthand saved.",
-                });
-              }}
-              className="tiq-primary-action min-h-10 rounded-md px-4 text-sm font-semibold transition"
-            >
-              Save shorthand
-            </button>
-          </div>
+              {customShorthandStatus && (
+                <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
+                  customShorthandStatus.type === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}
+                >
+                  {customShorthandStatus.message}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 text-stone-500">
+                  Ambiguous shorthand will ask for clarification instead of guessing.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parsedShorthand = parseCustomShorthandText(customShorthandText);
+
+                    if (parsedShorthand.errors.length > 0) {
+                      setCustomShorthandStatus({
+                        type: "error",
+                        message: parsedShorthand.errors.join("; "),
+                      });
+                      return;
+                    }
+
+                    onSaveCustomShorthand(parsedShorthand.customMap);
+                    setCustomShorthandStatus({
+                      type: "success",
+                      message: "Custom shorthand saved.",
+                    });
+                  }}
+                  className="tiq-primary-action min-h-10 rounded-md px-4 text-sm font-semibold transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={onChangeMode}
-          className="tiq-primary-action mt-6 min-h-11 rounded-md px-5 text-sm font-semibold transition"
-        >
-          Change mode
-        </button>
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={onChangeMode}
+            className="tiq-primary-action min-h-11 rounded-md px-5 text-sm font-semibold transition"
+          >
+            Change mode
+          </button>
+          </div>
       </section>
     );
   }
@@ -3442,6 +3473,11 @@ function Drafts({ drafts, onBack, onContinueDraft, onDeleteDraft, onStartNew }) 
                 <p className="mt-1 text-sm text-stone-500">
                   {isReviewDraft ? "Needs review" : "Capture in progress"} - Last edited {updatedAt}
                 </p>
+                {draft.syncStatus === "pending" && (
+                  <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+                    Waiting to save
+                  </p>
+                )}
               </div>
               <span className="text-sm text-stone-600">{capturedViews}/2 views</span>
               <span className="text-sm text-stone-600">
@@ -6278,6 +6314,23 @@ function CloudSyncNotice({ status, onDismiss }) {
   );
 }
 
+function ConnectionNotice({ isOnline }) {
+  if (isOnline) {
+    return null;
+  }
+
+  return (
+    <div className="fixed bottom-4 left-4 right-4 z-[80] sm:left-auto sm:w-[360px]">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 shadow-xl">
+        <p className="text-xs font-bold uppercase tracking-[0.18em]">Connection paused</p>
+        <p className="mt-1 text-sm font-semibold leading-5">
+          You can keep working. Drafts will save when your connection returns.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function PasswordResetPage({ onUpdatePassword }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -6412,6 +6465,9 @@ function App() {
   const [activeReminderAlert, setActiveReminderAlert] = useState(null);
   const [draftStorageError, setDraftStorageError] = useState("");
   const [cloudStatus, setCloudStatus] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (
+    typeof navigator === "undefined" ? true : navigator.onLine
+  ));
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -6422,6 +6478,8 @@ function App() {
   const cloudDraftIdsRef = useRef({});
   const cloudDraftPendingRef = useRef({});
   const cloudDraftQueuedRef = useRef({});
+  const wasOfflineRef = useRef(false);
+  const pendingDraftRestoreCheckedRef = useRef(false);
   const currentUser = authUsers.find((user) => (
     (authSession?.userId && user.id === authSession.userId) ||
     (authSession?.username && user.username === authSession.username)
@@ -6465,6 +6523,27 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => {
+      wasOfflineRef.current = true;
+      setIsOnline(false);
+      showCloudStatus("error", "Connection is offline. Drafts will save when your connection returns.");
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [showCloudStatus]);
+
   function clearWorkspaceState() {
     setCustomers([]);
     setStyles([]);
@@ -6482,6 +6561,8 @@ function App() {
     cloudDraftIdsRef.current = {};
     cloudDraftPendingRef.current = {};
     cloudDraftQueuedRef.current = {};
+    wasOfflineRef.current = false;
+    pendingDraftRestoreCheckedRef.current = false;
   }
 
   async function replaceWorkspaceWithCloud(profileUser, modeOverride = profileUser?.mode || "") {
@@ -6521,6 +6602,7 @@ function App() {
     cloudDraftIdsRef.current = {};
     cloudDraftPendingRef.current = {};
     cloudDraftQueuedRef.current = {};
+    pendingDraftRestoreCheckedRef.current = false;
   }
 
   useEffect(() => {
@@ -7048,6 +7130,12 @@ function App() {
   };
 
   const handleShareToTailor = async ({ tailorUsername, includePhotos, customer }) => {
+    if (!isOnline) {
+      const result = { ok: false, message: "Connection is offline. Try again when your connection returns." };
+      showCloudStatus("error", result.message);
+      return result;
+    }
+
     showCloudStatus("saving", "Sharing measurement...");
     const cloudResult = await saveSupabaseSharedMeasurement({ tailorUsername, includePhotos, customer }, currentUser);
 
@@ -7090,9 +7178,20 @@ function App() {
       return;
     }
 
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      setMeasurementDrafts((currentDrafts) => currentDrafts.map((currentDraft) => (
+        currentDraft.id === draft.id
+          ? { ...currentDraft, syncStatus: "pending", syncError: "Waiting for connection." }
+          : currentDraft
+      )));
+      return;
+    }
+
     const localDraftId = draft.id;
     const cloudDraftId = draft.cloudDraftId || cloudDraftIdsRef.current[localDraftId];
     const draftToSave = cloudDraftId ? { ...draft, cloudDraftId } : draft;
+    const cleanDraftToSave = stripDraftSyncState(draftToSave);
 
     if (cloudDraftPendingRef.current[localDraftId]) {
       cloudDraftQueuedRef.current[localDraftId] = draftToSave;
@@ -7101,17 +7200,29 @@ function App() {
 
     cloudDraftPendingRef.current[localDraftId] = true;
 
-    saveSupabaseMeasurementDraft(draftToSave, currentUser).then((result) => {
+    saveSupabaseMeasurementDraft(cleanDraftToSave, currentUser).then((result) => {
       cloudDraftPendingRef.current[localDraftId] = false;
 
       if (!result.ok) {
         showCloudStatus("error", `Draft could not be saved. ${result.message}`);
+        setMeasurementDrafts((currentDrafts) => currentDrafts.map((currentDraft) => (
+          currentDraft.id === draft.id
+            ? { ...currentDraft, syncStatus: "pending", syncError: result.message }
+            : currentDraft
+        )));
         return;
       }
 
       cloudDraftIdsRef.current[localDraftId] = result.draft.cloudDraftId;
       setMeasurementDrafts((currentDrafts) => currentDrafts.map((currentDraft) => (
-        currentDraft.id === draft.id ? { ...currentDraft, cloudDraftId: result.draft.cloudDraftId } : currentDraft
+        currentDraft.id === draft.id
+          ? {
+              ...currentDraft,
+              cloudDraftId: result.draft.cloudDraftId,
+              syncStatus: null,
+              syncError: null,
+            }
+          : currentDraft
       )));
 
       const queuedDraft = cloudDraftQueuedRef.current[localDraftId];
@@ -7121,7 +7232,27 @@ function App() {
         syncDraftToCloud({ ...queuedDraft, cloudDraftId: result.draft.cloudDraftId });
       }
     });
-  }, [currentUser, showCloudStatus]);
+  }, [currentUser, isOnline, showCloudStatus]);
+
+  useEffect(() => {
+    if (!isOnline || !currentUser?.id) {
+      return;
+    }
+
+    const pendingDrafts = measurementDrafts.filter((draft) => draft.syncStatus === "pending");
+    const shouldRetry = wasOfflineRef.current || !pendingDraftRestoreCheckedRef.current;
+
+    pendingDraftRestoreCheckedRef.current = true;
+
+    if (!shouldRetry || pendingDrafts.length === 0) {
+      wasOfflineRef.current = false;
+      return;
+    }
+
+    wasOfflineRef.current = false;
+    showCloudStatus("saving", "Saving drafts...");
+    pendingDrafts.forEach((draft) => syncDraftToCloud(draft));
+  }, [currentUser?.id, isOnline, measurementDrafts, showCloudStatus, syncDraftToCloud]);
 
   const confirmDeleteCustomer = async (customer) => {
     const cloudResult = await deleteSupabaseTailorRecord(customer, currentUser);
@@ -7188,9 +7319,16 @@ function App() {
         reviewCustomer: draftCustomer,
         reviewState: null,
       });
-      const nextDrafts = [reviewDraft, ...filteredDrafts];
+      const draftForStorage = isOnline
+        ? reviewDraft
+        : { ...reviewDraft, syncStatus: "pending", syncError: "Waiting for connection." };
+      const nextDrafts = [draftForStorage, ...filteredDrafts];
 
-      syncDraftToCloud(reviewDraft);
+      if (isOnline) {
+        syncDraftToCloud(reviewDraft);
+      } else {
+        wasOfflineRef.current = true;
+      }
 
       if (!saveMeasurementDrafts(nextDrafts)) {
         showCloudStatus("error", "Draft could not be saved on this device. Delete older drafts and try again.");
@@ -7212,20 +7350,27 @@ function App() {
         appMode: draft.appMode || existingDraft?.appMode || userMode,
         createdAt: existingDraft?.createdAt || draft.createdAt,
       });
+      const draftForStorage = isOnline
+        ? nextDraft
+        : { ...nextDraft, syncStatus: "pending", syncError: "Waiting for connection." };
 
       const nextDrafts = existingDraft
-        ? currentDrafts.map((currentDraft) => (currentDraft.id === draftId ? nextDraft : currentDraft))
-        : [nextDraft, ...currentDrafts];
+        ? currentDrafts.map((currentDraft) => (currentDraft.id === draftId ? draftForStorage : currentDraft))
+        : [draftForStorage, ...currentDrafts];
 
       if (!saveMeasurementDrafts(nextDrafts)) {
         showCloudStatus("error", "Draft could not be saved on this device. Retake photos or delete older drafts.");
       }
 
-      syncDraftToCloud(nextDraft);
+      if (isOnline) {
+        syncDraftToCloud(nextDraft);
+      } else {
+        wasOfflineRef.current = true;
+      }
 
       return nextDrafts;
     });
-  }, [activeMeasurementDraftId, showCloudStatus, syncDraftToCloud, userMode]);
+  }, [activeMeasurementDraftId, isOnline, showCloudStatus, syncDraftToCloud, userMode]);
 
   const handleDeleteMeasurementDraft = (draft) => {
     const draftName = draft.stage === "review"
@@ -7269,6 +7414,12 @@ function App() {
     let savedCustomer = { ...reviewedCustomer, appMode: reviewedCustomer.appMode || userMode };
 
     delete savedCustomer.editMode;
+
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return;
+    }
+
     showCloudStatus("saving", "Saving final measurement...");
 
     if (!isClientMode) {
@@ -7319,6 +7470,11 @@ function App() {
   };
 
   const handleManualSave = async (manualData) => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return;
+    }
+
     const customer = {
       ...manualData,
       appMode: "tailor",
@@ -7340,6 +7496,11 @@ function App() {
   };
 
   const handleSaveStyle = async (styleData) => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return false;
+    }
+
     showCloudStatus("saving", "Saving style...");
     const nextStyle = {
       ...styleData,
@@ -7371,6 +7532,11 @@ function App() {
   };
 
   const handleSaveReminder = async (reminderData) => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return false;
+    }
+
     showCloudStatus("saving", "Saving reminder...");
     const linkedCustomer = visibleCustomers.find((customer) => String(customer.id) === String(reminderData.customerId));
     const nextReminder = {
@@ -7401,6 +7567,11 @@ function App() {
   };
 
   const handleUpdateReminder = async (reminderId, updates) => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return false;
+    }
+
     const existingReminder = reminders.find((reminder) => reminder.id === reminderId);
 
     if (!existingReminder) {
@@ -7502,6 +7673,11 @@ function App() {
   };
 
   const handleConfirmDelete = async () => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return;
+    }
+
     if (deleteAction?.type === "customer" && deleteAction.customer) {
       const deleted = await confirmDeleteCustomer(deleteAction.customer);
 
@@ -7862,6 +8038,7 @@ function App() {
         status={cloudStatus}
         onDismiss={() => setCloudStatus(null)}
       />
+      <ConnectionNotice isOnline={isOnline} />
       <ReminderAlertModal
         reminder={activeReminderAlert}
         onClose={handleCloseReminderAlert}
