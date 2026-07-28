@@ -768,6 +768,85 @@ function getMaskBox(mask, width, height) {
   return { area, minX, maxX, minY, maxY };
 }
 
+function getMaskRowFeature(mask, width, height, levelY, bandRatio = 0.012) {
+  if (!mask?.length || !Number.isFinite(levelY)) {
+    return null;
+  }
+
+  const centerY = Math.round(clampValue(levelY, 0, 1) * (height - 1));
+  const band = Math.max(Math.round(height * bandRatio), 1);
+  let minX = width;
+  let maxX = 0;
+  let count = 0;
+
+  for (let y = Math.max(centerY - band, 0); y <= Math.min(centerY + band, height - 1); y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (mask[y * width + x] !== 1) {
+        continue;
+      }
+
+      count += 1;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+    }
+  }
+
+  if (count === 0) {
+    return null;
+  }
+
+  return {
+    centerX: Number((((minX + maxX) / 2) / width).toFixed(3)),
+    widthRatio: Number(((maxX - minX) / width).toFixed(3)),
+  };
+}
+
+function getPoseQualityWarnings(metrics, label, view = "front") {
+  const warnings = [];
+  const widthToHeight = metrics?.bodyWidthToHeightRatio;
+  const rows = metrics?.silhouetteRows || {};
+  const center = metrics?.silhouetteLevels?.bodyCenterX;
+  const shoulder = rows.shoulder;
+  const waist = rows.waist;
+  const hip = rows.hip;
+  const knee = rows.knee;
+  const ankle = rows.ankle;
+
+  if (view === "front") {
+    if (Number.isFinite(widthToHeight) && widthToHeight < 0.2) {
+      warnings.push(`${label} does not look front-facing. Face the camera straight on before capture.`);
+    }
+
+    if (Number.isFinite(widthToHeight) && widthToHeight > 0.72) {
+      warnings.push(`${label} looks too close or too wide for a standing front pose. Step back and keep the full body visible.`);
+    }
+
+    if (waist?.widthRatio && shoulder?.widthRatio && waist.widthRatio > shoulder.widthRatio * 1.22) {
+      warnings.push(`${label} arms may be too close to the body or covering the waist. Let the arms hang slightly away from the sides.`);
+    }
+  } else {
+    if (Number.isFinite(widthToHeight) && widthToHeight > 0.58) {
+      warnings.push(`${label} does not look fully side-facing. Turn sideways so one shoulder and one hip face the camera.`);
+    }
+
+    if (Number.isFinite(widthToHeight) && widthToHeight < 0.13) {
+      warnings.push(`${label} body outline is too thin to read clearly. Turn to a clean side pose and keep the whole body visible.`);
+    }
+  }
+
+  [shoulder, waist, hip, knee, ankle].forEach((row) => {
+    if (!row || !Number.isFinite(row.centerX) || !Number.isFinite(center)) {
+      return;
+    }
+
+    if (Math.abs(row.centerX - center) > 0.16) {
+      warnings.push(`${label} pose looks twisted or leaning. Stand straight with shoulders and hips aligned.`);
+    }
+  });
+
+  return [...new Set(warnings)];
+}
+
 function buildApproximatePoseMetricsFromRaster(raster, view = "front") {
   if (!raster) {
     return null;
@@ -788,6 +867,19 @@ function buildApproximatePoseMetricsFromRaster(raster, view = "front") {
   const bodyCenterX = clampValue(((box.minX + box.maxX) / 2) / raster.width, 0, 1);
   const level = (ratio) => clampValue(bodyTopY + bodyHeightRatio * ratio, 0.02, 0.98);
   const widthRatio = bodyWidthRatio / bodyHeightRatio;
+  const silhouetteLevels = {
+    bodyCenterX,
+    shoulderY: level(0.2),
+    chestY: level(0.29),
+    underbustY: level(0.36),
+    waistY: level(0.46),
+    hipY: level(0.58),
+    thighY: level(0.68),
+    kneeY: level(0.8),
+    ankleY: level(0.96),
+    bodyTopY,
+    bodyBottomY,
+  };
 
   return {
     landmarkSource: "backend-body-outline",
@@ -801,18 +893,14 @@ function buildApproximatePoseMetricsFromRaster(raster, view = "front") {
     sleeveLengthRatio: 0.33,
     trouserLengthRatio: 0.58,
     inseamRatio: 0.44,
-    silhouetteLevels: {
-      bodyCenterX,
-      shoulderY: level(0.2),
-      chestY: level(0.29),
-      underbustY: level(0.36),
-      waistY: level(0.46),
-      hipY: level(0.58),
-      thighY: level(0.68),
-      kneeY: level(0.8),
-      ankleY: level(0.96),
-      bodyTopY,
-      bodyBottomY,
+    silhouetteLevels,
+    silhouetteRows: {
+      shoulder: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.shoulderY),
+      chest: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.chestY),
+      waist: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.waistY),
+      hip: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.hipY),
+      knee: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.kneeY),
+      ankle: getMaskRowFeature(cleanup.mask, raster.width, raster.height, silhouetteLevels.ankleY),
     },
     frameMetrics: getRasterFrameMetrics(raster),
     maskCleanup: cleanup.metadata,
@@ -841,6 +929,7 @@ function getPhotoCheckResult({ raster, view = "front" }) {
     minBottomY: view === "side" ? 0.7 : 0.74,
     maxTopY: view === "side" ? 0.27 : 0.24,
   });
+  const poseWarnings = getPoseQualityWarnings(metrics, label, view);
   const center = metrics.silhouetteLevels.bodyCenterX;
   const centerWarning = center < 0.24 || center > 0.76
     ? [`${label} is not centered. Move the body toward the middle of the frame.`]
@@ -855,7 +944,7 @@ function getPhotoCheckResult({ raster, view = "front" }) {
       normalizedWarning.includes("blurry")
     );
   });
-  const blockingWarnings = [...fitWarnings, ...centerWarning, ...blockingFrameWarnings];
+  const blockingWarnings = [...fitWarnings, ...poseWarnings, ...centerWarning, ...blockingFrameWarnings];
 
   return {
     ok: blockingWarnings.length === 0,
@@ -911,6 +1000,8 @@ function validateCapturePayload(payload) {
     minBottomY: 0.7,
     maxTopY: 0.27,
   });
+  const frontPoseWarnings = getPoseQualityWarnings(frontPose, "Front view", "front");
+  const sidePoseWarnings = getPoseQualityWarnings(sidePose, "Side view", "side");
   const blockingFrameWarnings = [...frontFrameWarnings, ...sideFrameWarnings].filter((warning) => {
     const normalizedWarning = warning.toLowerCase();
 
@@ -925,6 +1016,8 @@ function validateCapturePayload(payload) {
   errors.push(
     ...frontFitWarnings,
     ...sideFitWarnings,
+    ...frontPoseWarnings,
+    ...sidePoseWarnings,
     ...blockingFrameWarnings,
   );
   warnings.push(...frontFrameWarnings, ...sideFrameWarnings);

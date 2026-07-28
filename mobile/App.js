@@ -195,6 +195,22 @@ function getLiveCaptureVoiceInstruction(message = "") {
     return "Move slightly closer, but keep your head and feet visible.";
   }
 
+  if (normalizedMessage.includes("front-facing")) {
+    return "Face the camera straight on.";
+  }
+
+  if (normalizedMessage.includes("side-facing") || normalizedMessage.includes("turn sideways")) {
+    return "Turn sideways so one shoulder faces the camera.";
+  }
+
+  if (normalizedMessage.includes("arms") || normalizedMessage.includes("waist")) {
+    return "Let your arms hang slightly away from your body.";
+  }
+
+  if (normalizedMessage.includes("stand straight") || normalizedMessage.includes("twisted")) {
+    return "Stand straight without twisting your shoulders or hips.";
+  }
+
   if (normalizedMessage.includes("too dark")) {
     return "Use brighter even lighting.";
   }
@@ -243,7 +259,13 @@ function isBlockingCaptureWarning(message = "") {
     normalizedMessage.includes("too small") ||
     normalizedMessage.includes("full-body check") ||
     normalizedMessage.includes("could not be checked") ||
-    normalizedMessage.includes("plain background")
+    normalizedMessage.includes("plain background") ||
+    normalizedMessage.includes("front-facing") ||
+    normalizedMessage.includes("side-facing") ||
+    normalizedMessage.includes("turn sideways") ||
+    normalizedMessage.includes("stand straight") ||
+    normalizedMessage.includes("arms may be too close") ||
+    normalizedMessage.includes("covering the waist")
   );
 }
 

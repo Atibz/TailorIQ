@@ -10,7 +10,7 @@ export async function validateCapturedPhoto({ photo, view }) {
   const result = await requestMobilePhotoCheck({ photo, view });
 
   return {
-    ok: true,
+    ok: Boolean(result.ok),
     engine: CAPTURE_VALIDATION_ENGINE,
     view,
     message: result.message || `${getViewLabel(view)} is ready.`,
