@@ -146,6 +146,7 @@ function CustomerDetailsFields({ isClientMode = false, section = "all", values, 
           >
             <option value="cm">cm</option>
             <option value="in">in</option>
+            <option value="ft">ft</option>
           </select>
         </div>
       </div>

@@ -17,15 +17,49 @@ function mapMeasurementRow(row) {
     generatedMeasurements,
     segmentationWarnings: row.photo_check_notes || storedRecord.segmentationWarnings || [],
     measurementSource: storedRecord.measurementSource || row.source || "mobile-photo",
+    photoStoragePolicy: storedRecord.photoStoragePolicy || "values-only",
     appMode: row.mode,
     createdAt: storedRecord.createdAt || row.created_at,
     updatedAt: row.updated_at || storedRecord.updatedAt,
   };
 }
 
+function summarizePhotoForCloud(photo, view) {
+  if (!photo?.uri && !photo?.hasPhoto) {
+    return null;
+  }
+
+  return {
+    view,
+    hasPhoto: true,
+    width: photo.width || null,
+    height: photo.height || null,
+    fileName: photo.fileName || `${view} photo`,
+    checkedAt: photo.captureValidation?.checkedAt || photo.photoCheck?.checkedAt || null,
+  };
+}
+
+function summarizePhotosForCloud(capturedPhotos = {}) {
+  return {
+    front: summarizePhotoForCloud(capturedPhotos.front, "front"),
+    side: summarizePhotoForCloud(capturedPhotos.side, "side"),
+  };
+}
+
+function sanitizeDraftForCloud(draft) {
+  const photoSummary = summarizePhotosForCloud(draft.capturedPhotos || {});
+
+  return {
+    ...draft,
+    capturedPhotos: photoSummary,
+    photoStoragePolicy: "photo-files-not-saved",
+  };
+}
+
 function mapDraftRow(row) {
   const values = row.values || {};
   const mobileDraft = values.mobileDraft || {};
+  const photoSummary = mobileDraft.capturedPhotos || values.photoSummary || values.photos || { front: null, side: null };
 
   return {
     ...mobileDraft,
@@ -38,7 +72,8 @@ function mapDraftRow(row) {
       height: "",
       customerName: row.customer_name || "",
     },
-    capturedPhotos: mobileDraft.capturedPhotos || values.photos || { front: null, side: null },
+    capturedPhotos: photoSummary,
+    photoStoragePolicy: mobileDraft.photoStoragePolicy || values.photoStoragePolicy || "photo-files-not-saved",
     measurementResult: mobileDraft.measurementResult || null,
     generatedMeasurements: mobileDraft.generatedMeasurements || [],
     reviewMeasurements: mobileDraft.reviewMeasurements || [],
@@ -57,13 +92,14 @@ function buildRecord({ profile, measurementDetails, measurements, generatedMeasu
     phone: "",
     email: "",
     height: measurementDetails.height,
-    heightUnit: "cm",
+    heightUnit: measurementDetails.heightUnit || "cm",
     measurementProfile: profile,
     measurementSource: source,
     measurements,
     generatedMeasurements,
     segmentationWarnings: warnings || [],
     customerNote: "",
+    photoStoragePolicy: "values-only",
     createdAt: now,
     updatedAt: now,
   };
@@ -73,7 +109,7 @@ function buildShareText(record) {
   const measurements = record.measurements || [];
   const lines = measurements
     .filter((measurement) => measurement?.label && measurement?.valueCm !== "")
-    .map((measurement) => `${measurement.label}: ${measurement.valueCm} cm`);
+    .map((measurement) => `${measurement.label}: ${Math.round((Number(measurement.valueCm) / 2.54) * 4) / 4} in`);
 
   return [
     "TailorIQ measurement summary",
@@ -125,6 +161,7 @@ export async function saveMobileMeasurement({
   generatedMeasurements,
   warnings,
   measurementSource = "mobile-photo",
+  existingRecord = null,
 }) {
   if (!supabase || !user?.id) {
     return { ok: false, message: getSupabaseConfigError() };
@@ -139,8 +176,17 @@ export async function saveMobileMeasurement({
     warnings,
     measurementSource,
   });
+  const existingCloudMeasurementId = existingRecord?.cloudMeasurementId || null;
+  const existingCloudCustomerId = existingRecord?.cloudCustomerId || null;
 
-  if (mode === "tailor") {
+  if (existingRecord) {
+    record.id = existingRecord.id || record.id;
+    record.createdAt = existingRecord.createdAt || record.createdAt;
+    record.cloudMeasurementId = existingCloudMeasurementId;
+    record.cloudCustomerId = existingCloudCustomerId;
+  }
+
+  if (mode === "tailor" && !existingCloudCustomerId) {
     if (!record.fullname || record.fullname === "My measurement") {
       return { ok: false, message: "Customer name is required before saving." };
     }
@@ -166,11 +212,27 @@ export async function saveMobileMeasurement({
     }
 
     record.cloudCustomerId = customerRow.id;
+  } else if (mode === "tailor" && existingCloudCustomerId) {
+    record.cloudCustomerId = existingCloudCustomerId;
+
+    const { error: customerUpdateError } = await supabase
+      .from("customers")
+      .update({
+        fullname: record.fullname,
+        measurement_profile: profile,
+        height_cm: Number(measurementDetails.height) || null,
+        source: measurementSource,
+        updated_at: now,
+      })
+      .eq("id", existingCloudCustomerId)
+      .eq("user_id", user.id);
+
+    if (customerUpdateError) {
+      return { ok: false, message: customerUpdateError.message };
+    }
   }
 
-  const { data: measurementRow, error: measurementError } = await supabase
-    .from("measurements")
-    .insert({
+  const measurementPayload = {
       user_id: user.id,
       customer_id: mode === "tailor" ? record.cloudCustomerId : null,
       mode,
@@ -195,9 +257,23 @@ export async function saveMobileMeasurement({
       photo_paths: {},
       source: measurementSource,
       updated_at: now,
-    })
-    .select("*")
-    .single();
+  };
+
+  const measurementQuery = existingCloudMeasurementId
+    ? supabase
+        .from("measurements")
+        .update(measurementPayload)
+        .eq("id", existingCloudMeasurementId)
+        .eq("user_id", user.id)
+        .select("*")
+        .single()
+    : supabase
+        .from("measurements")
+        .insert(measurementPayload)
+        .select("*")
+        .single();
+
+  const { data: measurementRow, error: measurementError } = await measurementQuery;
 
   if (measurementError) {
     return { ok: false, message: measurementError.message };
@@ -407,6 +483,7 @@ export async function saveMobileMeasurementDraft({ user, draft }) {
     ...draft,
     updatedAt: now,
   };
+  const cloudDraft = sanitizeDraftForCloud(cleanDraft);
   const payload = {
     user_id: user.id,
     mode: cleanDraft.mode || "client",
@@ -414,9 +491,10 @@ export async function saveMobileMeasurementDraft({ user, draft }) {
     customer_name: cleanDraft.measurementDetails?.customerName || cleanDraft.measurementDetails?.fullName || "Untitled measurement",
     values: {
       localDraftId: cleanDraft.id,
-      mobileDraft: cleanDraft,
+      mobileDraft: cloudDraft,
       formValues: cleanDraft.measurementDetails || {},
-      photos: cleanDraft.capturedPhotos || {},
+      photoSummary: cloudDraft.capturedPhotos || {},
+      photoStoragePolicy: "photo-files-not-saved",
     },
     review_customer: cleanDraft.stage === "review"
       ? {

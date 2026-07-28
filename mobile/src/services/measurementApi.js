@@ -29,6 +29,14 @@ function getMeasurementUrl() {
   return joinMeasurementPath("/measurements/segment");
 }
 
+function getMeasurementFallbackUrls() {
+  return [
+    joinMeasurementPath("/measurements/segment"),
+    joinMeasurementPath("/measure"),
+    joinMeasurementPath("/"),
+  ].filter(Boolean);
+}
+
 function getPhotoCheckUrl() {
   return joinMeasurementPath("/measurements/photo-check");
 }
@@ -38,7 +46,7 @@ function getMeasurementConfigError() {
     return "";
   }
 
-  return "Measurement service is not connected. Add EXPO_PUBLIC_SEGMENTATION_API_URL in mobile/.env.";
+  return "Measurement analysis is not connected on this device yet. Check the app setup and try again.";
 }
 
 function withTimeout(promise, milliseconds, errorMessage) {
@@ -101,43 +109,60 @@ export async function requestMobileMeasurements({ frontPhoto, sidePhoto, profile
     readPhotoAsDataUrl(sidePhoto),
   ]);
 
-  const response = await withTimeout(fetch(getMeasurementUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const payload = {
+    profile,
+    scale: {
+      mode: "known-height",
+      height,
+      heightUnit: "cm",
     },
-    body: JSON.stringify({
-      profile,
-      scale: {
-        mode: "known-height",
-        height,
-        heightUnit: "cm",
-      },
-      images: {
-        front: frontImage,
-        side: sideImage,
-      },
-      poseMetrics: {
-        front: frontPhoto.captureValidation?.metrics || frontPhoto.photoCheck?.metrics || null,
-        side: sidePhoto.captureValidation?.metrics || sidePhoto.photoCheck?.metrics || null,
-      },
-    }),
-  }), REQUEST_TIMEOUT_MS, "Measurement analysis timed out. Try smaller, clearer photos or check the connection.");
+    images: {
+      front: frontImage,
+      side: sideImage,
+    },
+    poseMetrics: {
+      front: frontPhoto.captureValidation?.metrics || frontPhoto.photoCheck?.metrics || null,
+      side: sidePhoto.captureValidation?.metrics || sidePhoto.photoCheck?.metrics || null,
+    },
+  };
+  const urls = getMeasurementFallbackUrls();
+  let response = null;
+  let result = null;
+  let lastErrorMessage = "";
+  let usedUrl = urls[0] || getMeasurementUrl();
 
-  if (!response.ok) {
-    let message = `Measurement service failed with ${response.status}`;
+  for (const url of urls) {
+    usedUrl = url;
+    response = await withTimeout(fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }), REQUEST_TIMEOUT_MS, "Measurement analysis timed out. Try smaller, clearer photos or check the connection.");
 
     try {
-      const errorBody = await response.json();
-      message = errorBody?.error || message;
+      result = await response.json();
     } catch {
-      // Keep the status message if the backend does not return JSON.
+      result = null;
+    }
+
+    if (response.ok || response.status !== 404) {
+      break;
+    }
+
+    lastErrorMessage = result?.error || result?.message || "Measurement analysis could not be reached.";
+  }
+
+  if (!response.ok) {
+    let message = result?.error || result?.message || lastErrorMessage || `Measurement service failed with ${response.status}`;
+
+    if (response.status === 404 || message === "Not found") {
+      message = "Measurement analysis could not be reached. Check the app setup, restart the app, and try again.";
     }
 
     throw new Error(message);
   }
-
-  const result = await response.json();
 
   if (!result?.measurements) {
     throw new Error("Measurement service did not return measurements.");
@@ -169,7 +194,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
   try {
     result = await response.json();
   } catch {
-    // Keep the status message if the backend does not return JSON.
+    // Keep the status message if the service does not return JSON.
   }
 
   if (!response.ok && response.status === 404) {
@@ -197,7 +222,7 @@ export async function requestMobilePhotoCheck({ photo, view }) {
 
   if (!response.ok) {
     if (response.status === 404 || result?.error === "Not found") {
-      throw new Error("Photo check is not available on the measurement backend yet. Restart or redeploy the backend, then reload the app.");
+      throw new Error("Photo check is not available right now. Restart the app and try again.");
     }
 
     throw new Error(result?.error || result?.message || `Photo check failed with ${response.status}`);

@@ -46,13 +46,12 @@ const resultGuideDefinitions = {
   male: [
     { key: "neck", marker: "circumference", label: "Neck", instruction: "Neck is measured around the base of the neck where the collar sits.", view: "front", type: "horizontal", x1: 43, x2: 57, y: 45 },
     { key: "chest", marker: "circumference", label: "Chest", instruction: "Chest is measured around the fullest chest, with the tape level across the back.", view: "front", type: "horizontal", x1: 29, x2: 71, y: 65 },
-    { key: "stomach", marker: "circumference", label: "Stomach", instruction: "Stomach is measured around the belly line, usually slightly above the trouser waist.", view: "front", type: "horizontal", x1: 34, x2: 66, y: 91 },
+    { key: "stomach", marker: "circumference", label: "Stomach", instruction: "Stomach is measured around the belly line, usually slightly above the trouser waist.", view: "front", type: "horizontal", x1: 35, x2: 65, y: 86 },
     { key: "shoulder", marker: "width", label: "Shoulder", instruction: "Shoulder is measured across the back from one shoulder point to the other.", view: "front", type: "horizontal", x1: 28, x2: 72, y: 48 },
-    { key: "acrossBack", marker: "width", label: "Across back", instruction: "Across back is measured from arm crease to arm crease across the shoulder blades.", view: "front", type: "horizontal", x1: 31, x2: 69, y: 65 },
     { key: "armhole", label: "Armhole", instruction: "Armhole is measured around the arm opening from shoulder, underarm, and back up.", view: "front", type: "curve", path: "M30 51 C24 58 24 68 30 75", cx: 28, cy: 63 },
-    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", view: "front", type: "diagonal", x1: 29, y1: 50, x2: 21, y2: 114 },
+    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", view: "front", type: "diagonal", x1: 29, y1: 49, x2: 22, y2: 109 },
     { key: "bicep", marker: "circumference", label: "Round sleeve", instruction: "Round sleeve is measured around the fullest part of the upper arm.", view: "front", type: "horizontal", x1: 21, x2: 31, y: 78 },
-    { key: "wrist", marker: "circumference", label: "Cuff / wrist", instruction: "Cuff or wrist is measured around the wrist or desired cuff opening.", view: "front", type: "horizontal", x1: 20, x2: 28, y: 117 },
+    { key: "wrist", marker: "circumference", label: "Cuff / wrist", instruction: "Cuff or wrist is measured around the wrist or desired cuff opening.", view: "front", type: "horizontal", x1: 21, x2: 29, y: 108 },
     { key: "topLength", label: "Top length", instruction: "Top length is measured from the shoulder near the neck down to the hip or seat line.", view: "front", type: "vertical", x: 73, y1: 46, y2: 116 },
     { key: "waist", marker: "circumference", label: "Waist", instruction: "Waist is measured around the waistband position where the trouser will sit.", view: "front", type: "horizontal", x1: 33, x2: 67, y: 104 },
     { key: "seat", marker: "circumference", label: "Seat", instruction: "Seat is measured around the fullest part of the hip or seat.", view: "front", type: "horizontal", x1: 31, x2: 69, y: 116 },
@@ -60,7 +59,7 @@ const resultGuideDefinitions = {
     { key: "inseam", label: "Inseam", instruction: "Inseam is measured from crotch down the inside leg to the ankle.", view: "front", type: "vertical", x: 50, y1: 117, y2: 190 },
     { key: "rise", label: "Rise", instruction: "Rise is measured from waistband down to crotch depth.", view: "front", type: "vertical", x: 45, y1: 104, y2: 117 },
     { key: "thigh", marker: "circumference", label: "Thigh", instruction: "Thigh is measured around the fullest part of the upper thigh.", view: "front", type: "horizontal", x1: 35, x2: 51, y: 128 },
-    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", view: "front", type: "horizontal", x1: 36, x2: 49, y: 156 },
+    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", view: "front", type: "horizontal", x1: 33, x2: 46, y: 144 },
     { key: "ankle", marker: "circumference", label: "Bottom / ankle", instruction: "Bottom or ankle is measured at the trouser bottom opening.", view: "front", type: "horizontal", x1: 36, x2: 47, y: 190 },
   ],
   female: [
@@ -73,7 +72,7 @@ const resultGuideDefinitions = {
     { key: "frontLength", label: "Front bodice length", instruction: "Front bodice length is measured from shoulder through bust point down to the waist.", view: "front", type: "vertical", x: 70, y1: 49, y2: 90 },
     { key: "backLength", label: "Back bodice length", instruction: "Back bodice length is measured from back neck down to the natural waist.", view: "front", type: "vertical", x: 33, y1: 47, y2: 90 },
     { key: "armhole", label: "Armhole", instruction: "Armhole is measured around the arm opening from shoulder, underarm, and back up.", view: "front", type: "curve", path: "M32 52 C26 60 26 70 32 77", cx: 30, cy: 65 },
-    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", view: "front", type: "diagonal", x1: 31, y1: 51, x2: 18, y2: 114 },
+    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", view: "front", type: "diagonal", x1: 31, y1: 51, x2: 20, y2: 108 },
     { key: "bicep", marker: "circumference", label: "Round sleeve", instruction: "Round sleeve is measured around the fullest part of the upper arm.", view: "front", type: "horizontal", x1: 20, x2: 31, y: 79 },
     { key: "topLength", label: "Blouse/top length", instruction: "Blouse or top length is measured from shoulder down to the high hip line.", view: "front", type: "vertical", x: 72, y1: 49, y2: 105 },
     { key: "waistLower", marker: "circumference", label: "Waist band", instruction: "Waist band is measured around the chosen skirt, trouser, or gown waistband line, usually just below the navel.", view: "front", type: "horizontal", x1: 35, x2: 65, y: 98 },
@@ -84,7 +83,7 @@ const resultGuideDefinitions = {
     { key: "rise", label: "Rise", instruction: "Rise is measured from the natural waist down to crotch depth for trousers.", view: "front", type: "vertical", x: 50, y1: 90, y2: 121 },
     { key: "inseam", label: "Inseam", instruction: "Inseam is measured from crotch down the inside leg to the ankle.", view: "front", type: "vertical", x: 52, y1: 121, y2: 191 },
     { key: "thigh", marker: "circumference", label: "Thigh", instruction: "Thigh is measured around the fullest part of the upper thigh.", view: "front", type: "horizontal", x1: 35, x2: 51, y: 128 },
-    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", view: "front", type: "horizontal", x1: 37, x2: 49, y: 156 },
+    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", view: "front", type: "horizontal", x1: 34, x2: 46, y: 143 },
     { key: "ankle", marker: "circumference", label: "Ankle / hem", instruction: "Ankle or hem is measured at the trouser ankle or skirt hem opening.", view: "front", type: "horizontal", x1: 38, x2: 48, y: 191 },
   ],
 };
@@ -107,6 +106,14 @@ const AUTH_SESSION_STORAGE_KEY = "tailoriq_auth_session";
 const APP_THEME_STORAGE_KEY = "tailoriq_theme";
 const STYLE_IMAGE_BUCKET = "style-images";
 const MEASUREMENT_PHOTO_BUCKET = "measurement-photos";
+
+function isHiddenPhotoNote(message = "") {
+  return message.toLowerCase().includes("missing some body details");
+}
+
+function cleanPhotoCheckNotes(notes = []) {
+  return notes.filter((note) => !isHiddenPhotoNote(note));
+}
 
 const aboutSections = [
   {
@@ -2970,12 +2977,15 @@ function ClientHome({ draftCount, latestResult, onStartMeasurement, onViewDrafts
   );
 }
 
-function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser, onChangeMode, onChangeUsername, onSaveCustomShorthand }) {
+function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser, onChangeMode, onChangeUsername, onSaveCustomShorthand, onDeleteAccount }) {
   const [customShorthandText, setCustomShorthandText] = useState("");
   const [customShorthandStatus, setCustomShorthandStatus] = useState(null);
   const [usernameText, setUsernameText] = useState(currentUser?.username || "");
   const [usernameStatus, setUsernameStatus] = useState(null);
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [deleteAccountText, setDeleteAccountText] = useState("");
+  const [deleteAccountStatus, setDeleteAccountStatus] = useState(null);
+  const [deleteAccountSaving, setDeleteAccountSaving] = useState(false);
   const [profileSettingOpen, setProfileSettingOpen] = useState("");
   const pageContent = {
     help: {
@@ -3175,6 +3185,45 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
                   Save
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="text-base font-semibold text-red-800">Delete account</h3>
+          <p className="mt-2 text-sm leading-6 text-red-700">
+            Permanently remove your profile, saved measurements, drafts, reminders, saved styles, shared measurements, and login. This cannot be undone.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <input
+              value={deleteAccountText}
+              onChange={(event) => {
+                setDeleteAccountText(event.target.value);
+                setDeleteAccountStatus(null);
+              }}
+              className="min-h-11 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold outline-none focus:border-red-500 focus:ring-4 focus:ring-red-100"
+              placeholder="Type DELETE to confirm"
+            />
+            <button
+              type="button"
+              disabled={deleteAccountSaving || deleteAccountText.trim().toUpperCase() !== "DELETE"}
+              onClick={async () => {
+                setDeleteAccountSaving(true);
+                setDeleteAccountStatus(null);
+                const result = await onDeleteAccount();
+                setDeleteAccountSaving(false);
+                if (!result.ok) {
+                  setDeleteAccountStatus(result.message || "Account could not be deleted.");
+                }
+              }}
+              className="min-h-11 rounded-md border border-red-600 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deleteAccountSaving ? "Deleting..." : "Delete account"}
+            </button>
+          </div>
+          {deleteAccountStatus && (
+            <div className="mt-3 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700">
+              {deleteAccountStatus}
             </div>
           )}
         </div>
@@ -3992,6 +4041,7 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
   const [editingReminderId, setEditingReminderId] = useState(null);
   const [formValues, setFormValues] = useState({
     customerId: "",
+    customerName: "",
     type: "Fitting",
     title: "",
     dueDate: toDateInputValue(initialDueDate),
@@ -4031,6 +4081,7 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
     setEditingReminderId(null);
     setFormValues({
       customerId: "",
+      customerName: "",
       type: "Fitting",
       title: "",
       dueDate: toDateInputValue(nextDueDate),
@@ -4041,6 +4092,21 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
   };
 
   const handleChange = (event) => {
+    if (event.target.name === "customerName") {
+      const typedName = event.target.value;
+      const linkedCustomer = customers.find((customer) => (
+        customer.fullname?.toLowerCase() === typedName.trim().toLowerCase()
+      ));
+
+      setFormValues((currentValues) => ({
+        ...currentValues,
+        customerId: linkedCustomer?.id || "",
+        customerName: typedName,
+      }));
+      setStatus(null);
+      return;
+    }
+
     setFormValues((currentValues) => ({
       ...currentValues,
       [event.target.name]: event.target.value,
@@ -4056,10 +4122,14 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
       return;
     }
 
-    const linkedCustomer = customers.find((customer) => String(customer.id) === formValues.customerId);
+    const linkedCustomer = customers.find((customer) => (
+      String(customer.id) === formValues.customerId ||
+      customer.fullname?.toLowerCase() === formValues.customerName.trim().toLowerCase()
+    ));
     const reminderPayload = {
       ...formValues,
-      customerName: linkedCustomer?.fullname || "",
+      customerId: linkedCustomer?.id || "",
+      customerName: linkedCustomer?.fullname || formValues.customerName.trim(),
       dueAt: new Date(`${formValues.dueDate}T${formValues.dueTime}`).toISOString(),
     };
 
@@ -4094,6 +4164,7 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
 
     setFormValues((currentValues) => ({
       customerId: "",
+      customerName: "",
       type: "Fitting",
       title: "",
       dueDate: currentValues.dueDate,
@@ -4106,10 +4177,12 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
 
   const handleEditReminder = (reminder) => {
     const dueDate = getReminderDueDate(reminder) || initialDueDate;
+    const linkedCustomer = customers.find((customer) => String(customer.id) === String(reminder.customerId));
 
     setEditingReminderId(reminder.id);
     setFormValues({
       customerId: reminder.customerId || "",
+      customerName: reminder.customerName || linkedCustomer?.fullname || "",
       type: reminder.type || "Fitting",
       title: reminder.title || "",
       dueDate: toDateInputValue(dueDate),
@@ -4200,18 +4273,20 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
         <div className="grid gap-3 md:grid-cols-[1fr_0.8fr_0.7fr_0.7fr]">
           <div>
             <label htmlFor="reminder-customer" className="text-sm font-semibold text-stone-700">Customer</label>
-            <select
+            <input
               id="reminder-customer"
-              name="customerId"
-              value={formValues.customerId}
+              name="customerName"
+              list="reminder-customer-options"
+              value={formValues.customerName}
               onChange={handleChange}
               className="mt-2 min-h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
-            >
-              <option value="">No customer linked</option>
+              placeholder="Type customer name"
+            />
+            <datalist id="reminder-customer-options">
               {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>{customer.fullname}</option>
+                <option key={customer.id} value={customer.fullname} />
               ))}
-            </select>
+            </datalist>
           </div>
           <div>
             <label htmlFor="reminder-type" className="text-sm font-semibold text-stone-700">Reminder type</label>
@@ -4509,7 +4584,6 @@ const manualImportAliases = {
   highHip: ["high hip", "upper hip"],
   seat: ["seat", "bottom", "full seat", "hip", "hips"],
   shoulder: ["shoulder", "shoulders", "across shoulder"],
-  acrossBack: ["across back", "back width"],
   armhole: ["armhole", "arm hole", "round armhole"],
   sleeve: ["sleeve", "sleeve length", "long sleeve", "hand length"],
   bicep: ["bicep", "round sleeve", "round arm", "upper arm"],
@@ -4538,7 +4612,6 @@ const builtInManualShorthand = {
     st: "stomach",
     w: "waist",
     sh: "shoulder",
-    ab: "acrossBack",
     ah: "armhole",
     sl: "sleeve",
     rs: "bicep",
@@ -5269,6 +5342,7 @@ function ManualMeasurementForm({ importMode = false, customShorthand = {}, onBac
               >
                 <option value="cm">cm</option>
                 <option value="in">in</option>
+                <option value="ft">ft</option>
               </select>
             </div>
           </div>
@@ -5485,7 +5559,7 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
   }
 
   const generatedBaseline = draftCustomer.generatedMeasurements || draftCustomer.measurements;
-  const groupedMeasurements = draftCustomer.measurements.reduce((groups, measurement, index) => {
+  const groupedMeasurements = draftCustomer.measurements.map((measurement, index) => ({ measurement, index })).filter(({ measurement }) => measurement.fieldKey !== "acrossBack").reduce((groups, { measurement, index }) => {
     const group = measurement.group || getProfileLabel(draftCustomer.measurementProfile);
 
     return {
@@ -5499,7 +5573,10 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
   };
 
   const handleSave = async () => {
-    const finalMeasurements = draftCustomer.measurements.map((measurement, index) => {
+    const keptMeasurementEntries = draftCustomer.measurements
+      .map((measurement, index) => ({ measurement, index }))
+      .filter(({ measurement }) => measurement.fieldKey !== "acrossBack");
+    const finalMeasurements = keptMeasurementEntries.map(({ measurement, index }) => {
       const generatedMeasurement = generatedBaseline[index] || measurement;
       const rawValue = Number(values[index]);
       const finalValueCm = Number.isFinite(rawValue) && rawValue > 0 ? toCm(rawValue, unit) : measurement.valueCm;
@@ -5512,12 +5589,13 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
         note: `Reviewed final. Generated draft was ${generatedText}.`,
       };
     });
+    const finalGeneratedMeasurements = keptMeasurementEntries.map(({ measurement, index }) => generatedBaseline[index] || measurement);
 
     await onSaveReview({
       ...draftCustomer,
       measurements: finalMeasurements,
-      generatedMeasurements: generatedBaseline,
-      correctionLog: buildCorrectionLog(generatedBaseline, finalMeasurements),
+      generatedMeasurements: finalGeneratedMeasurements,
+      correctionLog: buildCorrectionLog(finalGeneratedMeasurements, finalMeasurements),
       customerNote: customerNote.trim(),
       measurementSource: draftCustomer.measurementSource === "manual" ? "manual" : "reviewed-photo",
       status: isEditingSavedRecord ? "Measurements updated" : "Reviewed measurements saved",
@@ -5596,11 +5674,11 @@ function MeasurementReview({ draftCustomer, onSaveReview, onCancel, onDraftChang
         </div>
       </div>
 
-      {draftCustomer.segmentationWarnings?.length > 0 && (
+      {cleanPhotoCheckNotes(draftCustomer.segmentationWarnings || []).length > 0 && (
         <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-stone-950">Photo check notes</p>
           <div className="mt-2 grid gap-2">
-            {draftCustomer.segmentationWarnings.map((warning) => (
+            {cleanPhotoCheckNotes(draftCustomer.segmentationWarnings || []).map((warning) => (
               <p key={warning} className="text-sm text-amber-900">{warning}</p>
             ))}
           </div>
@@ -5699,10 +5777,10 @@ function buildShareText(customer) {
   const lines = [
     `Measurement result for ${customer.fullname}`,
     `Profile: ${getProfileLabel(customer.measurementProfile)}`,
-    `Height scale: ${formatLength(getScaleHeightCm(customer))}`,
+    `Height scale: ${cmToInches(getScaleHeightCm(customer))} in`,
     "",
     "Measurements:",
-    ...customer.measurements.map((measurement) => `- ${measurement.label}: ${formatLength(measurement.valueCm)}`),
+    ...customer.measurements.map((measurement) => `- ${measurement.label}: ${cmToInches(measurement.valueCm)} in`),
   ];
 
   if (customer.customerNote) {
@@ -5961,7 +6039,7 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
       fileName: customer.photoViews?.find((photo) => photo.view === "Side view")?.fileName,
     },
   ].filter((photo) => Boolean(photo.preview));
-  const groupedMeasurements = customer.measurements.reduce((groups, measurement) => {
+  const groupedMeasurements = customer.measurements.filter((measurement) => measurement.fieldKey !== "acrossBack").reduce((groups, measurement) => {
     const group = measurement.group || getProfileLabel(customer.measurementProfile);
 
     return {
@@ -6145,11 +6223,11 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
         </div>
       )}
 
-      {customer.segmentationWarnings?.length > 0 && (
+      {cleanPhotoCheckNotes(customer.segmentationWarnings || []).length > 0 && (
         <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-stone-950">Photo check notes</p>
           <div className="mt-2 grid gap-2">
-            {customer.segmentationWarnings.map((warning) => (
+            {cleanPhotoCheckNotes(customer.segmentationWarnings || []).map((warning) => (
               <p key={warning} className="text-sm text-amber-900">{warning}</p>
             ))}
           </div>
@@ -7084,6 +7162,26 @@ function App() {
     clearWorkspaceState();
   };
 
+  const handleDeleteAccount = async () => {
+    if (!supabase) {
+      return { ok: false, message: getSupabaseConfigError() };
+    }
+
+    const { error } = await supabase.rpc("delete_current_user_account");
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    await supabase.auth.signOut();
+    setAuthSession(null);
+    setUserMode("");
+    setActivePage("dashboard");
+    clearWorkspaceState();
+
+    return { ok: true };
+  };
+
   const handleToggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
   };
@@ -7296,7 +7394,7 @@ function App() {
       measurements,
       generatedBy: "backend-segmentation",
       segmentationConfidence: backendResult?.confidence,
-      segmentationWarnings: backendResult?.warnings || [],
+      segmentationWarnings: cleanPhotoCheckNotes(backendResult?.warnings || []),
       segmentationDebug: backendResult?.debug,
       pipeline: [
         ...(recordData.pipeline || []),
@@ -8025,6 +8123,7 @@ function App() {
             onChangeMode={handleChangeMode}
             onChangeUsername={handleChangeUsername}
             onSaveCustomShorthand={handleSaveCustomShorthand}
+            onDeleteAccount={handleDeleteAccount}
           />
         )}
       </main>

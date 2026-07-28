@@ -128,8 +128,19 @@ export async function scheduleReminderNotification(reminder) {
 
 export async function scheduleReminderNotifications(reminders = []) {
   const openReminders = reminders.filter((reminder) => reminder.status !== "done");
+  const failedResults = [];
 
   for (const reminder of openReminders) {
-    await scheduleReminderNotification(reminder);
+    const result = await scheduleReminderNotification(reminder);
+
+    if (!result?.ok) {
+      failedResults.push(result);
+    }
   }
+
+  if (failedResults.length) {
+    return failedResults[0];
+  }
+
+  return { ok: true };
 }

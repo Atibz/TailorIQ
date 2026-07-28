@@ -1,4 +1,6 @@
 import { getSupabaseConfigError, supabase } from "./supabaseClient";
+import * as FileSystem from "expo-file-system/legacy";
+import { Buffer } from "buffer";
 
 const STYLE_IMAGE_BUCKET = "style-images";
 
@@ -41,14 +43,16 @@ async function uploadStyleImage(style, user) {
 
   const extension = getImageExtension(style.image);
   const imagePath = `${user.id}/${getMode(user)}/${Date.now()}-${Math.round(Math.random() * 100000)}.${extension}`;
-  const response = await fetch(style.image.uri);
-  const blob = await response.blob();
+  const base64 = await FileSystem.readAsStringAsync(style.image.uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const bytes = Buffer.from(base64, "base64");
 
   const { error } = await supabase
     .storage
     .from(STYLE_IMAGE_BUCKET)
-    .upload(imagePath, blob, {
-      contentType: style.image.mimeType || blob.type || "image/jpeg",
+    .upload(imagePath, bytes, {
+      contentType: style.image.mimeType || style.image.type || "image/jpeg",
       upsert: false,
     });
 

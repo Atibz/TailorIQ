@@ -917,6 +917,11 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
               </button>
             )}
           </div>
+          {error && (
+            <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              {error}
+            </p>
+          )}
         </div>
       </form>
     </section>

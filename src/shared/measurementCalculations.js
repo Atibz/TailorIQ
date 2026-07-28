@@ -7,11 +7,22 @@ export const roundMeasurement = (value) => Math.round(value / MEASUREMENT_PRECIS
 export const roundHalf = roundMeasurement;
 export const cmToInches = (value) => roundHalf(value / 2.54);
 export const inchesToCm = (value) => roundHalf(value * 2.54);
+export const feetToCm = (value) => roundHalf(value * 30.48);
 export const formatLength = (valueCm) => `${roundHalf(valueCm)} cm / ${cmToInches(valueCm)} in`;
-export const toCm = (value, unit) => (unit === "in" ? inchesToCm(Number(value)) : Number(value));
+export const toCm = (value, unit) => {
+  if (unit === "in") {
+    return inchesToCm(Number(value));
+  }
+
+  if (unit === "ft") {
+    return feetToCm(Number(value));
+  }
+
+  return Number(value);
+};
 
 export const getHeightCm = (customer) =>
-  customer.heightUnit === "in" ? inchesToCm(Number(customer.height)) : Number(customer.height);
+  toCm(customer.height, customer.heightUnit || "cm");
 
 export const defaultHeightByProfile = {
   male: 173,
@@ -389,7 +400,6 @@ export function processMeasurements(customer) {
     hip,
     seat: hip,
     shoulder,
-    acrossBack: shoulder - 2,
     armhole: getArmholeMeasurement(profileId, armholeChest, shoulder),
     sleeve,
     bicep: derivedCircumferences.bicep,

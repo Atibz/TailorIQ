@@ -9,7 +9,6 @@ export const measurementProfiles = {
           { key: "chest", label: "Chest", note: "Around the fullest chest" },
           { key: "stomach", label: "Stomach", note: "Around the belly line" },
           { key: "shoulder", label: "Shoulder", note: "Across the back from one shoulder point to the other" },
-          { key: "acrossBack", label: "Across back", note: "Back width across shoulder blades" },
           { key: "armhole", label: "Armhole", note: "Around the arm opening" },
           { key: "sleeve", label: "Sleeve length", note: "Shoulder point where sleeve starts to wrist" },
           { key: "bicep", label: "Round sleeve", note: "Around upper arm" },

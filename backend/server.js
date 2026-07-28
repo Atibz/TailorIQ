@@ -664,8 +664,17 @@ function getFrameWarnings(metrics, label) {
   return warnings;
 }
 
-function getBodyFitWarnings(metrics, label, { minimum }) {
+function getBodyFitWarnings(metrics, label, {
+  minimum,
+  maximum = 0.96,
+  maxWidthToHeight = 0.7,
+  minBottomY = 0.74,
+  maxTopY = 0.24,
+} = {}) {
   const bodyHeightRatio = metrics?.bodyHeightRatio;
+  const bodyWidthToHeightRatio = metrics?.bodyWidthToHeightRatio;
+  const topY = metrics?.silhouetteLevels?.bodyTopY;
+  const bottomY = metrics?.silhouetteLevels?.bodyBottomY;
 
   if (!Number.isFinite(bodyHeightRatio)) {
     return [`${label} full-body check is missing. Retake the photo if the person is not clearly visible from head to feet.`];
@@ -673,6 +682,22 @@ function getBodyFitWarnings(metrics, label, { minimum }) {
 
   if (bodyHeightRatio < minimum) {
     return [`${label} person is too small in the frame. Move the camera closer while keeping head and feet visible.`];
+  }
+
+  if (bodyHeightRatio > maximum) {
+    return [`${label} person is too close to the camera. Move the camera back so the full body fits comfortably.`];
+  }
+
+  if (Number.isFinite(topY) && topY > maxTopY) {
+    return [`${label} head area is not clearly inside the photo. Retake with the whole body visible from head to feet.`];
+  }
+
+  if (Number.isFinite(bottomY) && bottomY < minBottomY) {
+    return [`${label} feet area is not clearly inside the photo. Retake with the whole body visible from head to feet.`];
+  }
+
+  if (Number.isFinite(bodyWidthToHeightRatio) && bodyWidthToHeightRatio > maxWidthToHeight) {
+    return [`${label} outline looks too close or cropped for a full-body measurement. Step back and keep the full body in frame.`];
   }
 
   return [];
@@ -759,14 +784,17 @@ function buildApproximatePoseMetricsFromRaster(raster, view = "front") {
   const bodyTopY = clampValue(box.minY / raster.height, 0, 1);
   const bodyBottomY = clampValue(box.maxY / raster.height, 0, 1);
   const bodyHeightRatio = Math.max(bodyBottomY - bodyTopY, 0.01);
+  const bodyWidthRatio = Math.max((box.maxX - box.minX) / raster.width, 0.01);
   const bodyCenterX = clampValue(((box.minX + box.maxX) / 2) / raster.width, 0, 1);
   const level = (ratio) => clampValue(bodyTopY + bodyHeightRatio * ratio, 0.02, 0.98);
-  const widthRatio = Math.max((box.maxX - box.minX) / raster.width, 0.01) / bodyHeightRatio;
+  const widthRatio = bodyWidthRatio / bodyHeightRatio;
 
   return {
     landmarkSource: "backend-body-outline",
     landmarks: [],
     bodyHeightRatio,
+    bodyWidthRatio,
+    bodyWidthToHeightRatio: Number(widthRatio.toFixed(3)),
     shoulderWidthRatio: widthRatio * (view === "side" ? 0.48 : 0.82),
     hipWidthRatio: widthRatio * (view === "side" ? 0.58 : 0.72),
     torsoLengthRatio: 0.31,
@@ -808,18 +836,31 @@ function getPhotoCheckResult({ raster, view = "front" }) {
   const frameWarnings = getFrameWarnings(metrics, label);
   const fitWarnings = getBodyFitWarnings(metrics, label, {
     minimum: view === "side" ? 0.38 : 0.48,
-    maximum: view === "side" ? 0.99 : 0.99,
+    maximum: view === "side" ? 0.96 : 0.96,
+    maxWidthToHeight: view === "side" ? 0.58 : 0.72,
+    minBottomY: view === "side" ? 0.7 : 0.74,
+    maxTopY: view === "side" ? 0.27 : 0.24,
   });
   const center = metrics.silhouetteLevels.bodyCenterX;
   const centerWarning = center < 0.24 || center > 0.76
     ? [`${label} is not centered. Move the body toward the middle of the frame.`]
     : [];
-  const blockingWarnings = [...fitWarnings, ...centerWarning];
+  const blockingFrameWarnings = frameWarnings.filter((warning) => {
+    const normalizedWarning = warning.toLowerCase();
+
+    return (
+      normalizedWarning.includes("too dark") ||
+      normalizedWarning.includes("overexposed") ||
+      normalizedWarning.includes("low contrast") ||
+      normalizedWarning.includes("blurry")
+    );
+  });
+  const blockingWarnings = [...fitWarnings, ...centerWarning, ...blockingFrameWarnings];
 
   return {
     ok: blockingWarnings.length === 0,
     metrics,
-    warnings: [...blockingWarnings, ...frameWarnings],
+    warnings: [...new Set([...blockingWarnings, ...frameWarnings])],
     message: blockingWarnings[0] || frameWarnings[0] || `${label} is ready.`,
   };
 }
@@ -854,23 +895,39 @@ function validateCapturePayload(payload) {
     return { errors, warnings };
   }
 
-  warnings.push(
-    ...getFrameWarnings(frontPose, "Front view"),
-    ...getFrameWarnings(sidePose, "Side view"),
-    ...getBodyFitWarnings(frontPose, "Front view", { minimum: 0.48, maximum: 0.99 }),
-    ...getBodyFitWarnings(sidePose, "Side view", { minimum: 0.38, maximum: 0.99 }),
+  const frontFrameWarnings = getFrameWarnings(frontPose, "Front view");
+  const sideFrameWarnings = getFrameWarnings(sidePose, "Side view");
+  const frontFitWarnings = getBodyFitWarnings(frontPose, "Front view", {
+    minimum: 0.48,
+    maximum: 0.96,
+    maxWidthToHeight: 0.72,
+    minBottomY: 0.74,
+    maxTopY: 0.24,
+  });
+  const sideFitWarnings = getBodyFitWarnings(sidePose, "Side view", {
+    minimum: 0.38,
+    maximum: 0.96,
+    maxWidthToHeight: 0.58,
+    minBottomY: 0.7,
+    maxTopY: 0.27,
+  });
+  const blockingFrameWarnings = [...frontFrameWarnings, ...sideFrameWarnings].filter((warning) => {
+    const normalizedWarning = warning.toLowerCase();
+
+    return (
+      normalizedWarning.includes("too dark") ||
+      normalizedWarning.includes("overexposed") ||
+      normalizedWarning.includes("low contrast") ||
+      normalizedWarning.includes("blurry")
+    );
+  });
+
+  errors.push(
+    ...frontFitWarnings,
+    ...sideFitWarnings,
+    ...blockingFrameWarnings,
   );
-
-  const frontLandmarks = getLandmarkSummary(frontPose);
-  const sideLandmarks = getLandmarkSummary(sidePose);
-
-  if (!frontLandmarks.hasExpectedLandmarks) {
-    warnings.push("Front view photo is missing some body details. Retake if the result looks unreliable.");
-  }
-
-  if (!sideLandmarks.hasExpectedLandmarks) {
-    warnings.push("Side view photo is missing some body details. Retake if the result looks unreliable.");
-  }
+  warnings.push(...frontFrameWarnings, ...sideFrameWarnings);
 
   return { errors, warnings };
 }
@@ -1122,7 +1179,6 @@ function buildMeasurements(payload, captureWarnings = []) {
       hip,
       seat: hip,
       shoulder: roundHalf(shoulderWidth),
-      acrossBack: roundHalf(shoulderWidth - 2),
       armhole,
       sleeve: roundHalf(sleeve),
       bicep: roundHalf(derived.bicep),
