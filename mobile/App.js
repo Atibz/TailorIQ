@@ -29,7 +29,15 @@ import { buildMeasurementList, getProfileFields, roundMeasurement } from "./src/
 import { validateCapturedPhoto } from "./src/services/captureValidationApi";
 import { requestMobileMeasurements } from "./src/services/measurementApi";
 import { deleteMobileReminder, fetchMobileReminders, saveMobileReminder } from "./src/services/reminderApi";
-import { deleteMobileStyle, fetchMobileStyles, saveMobileStyle } from "./src/services/styleApi";
+import {
+  attachMobileStyleToCustomer,
+  deleteMobileStyle,
+  detachMobileStyleFromCustomer,
+  fetchMobileStyleCategories,
+  fetchMobileStyles,
+  saveMobileStyleCategory,
+  saveMobileStyle,
+} from "./src/services/styleApi";
 import { deleteMobileAccount } from "./src/services/accountApi";
 import {
   cancelReminderNotification,
@@ -72,6 +80,47 @@ const GOOGLE_AUTH_REDIRECT_URL = "tailoriq://auth/callback";
 const APP_THEME_STORAGE_KEY = "tailoriq_mobile_theme";
 const isRunningInExpoGo = Constants.appOwnership === "expo";
 let activeLightMode = false;
+const subscriptionPlans = {
+  free: {
+    id: "free",
+    label: "Free",
+    customerLimit: 10,
+    styleLimit: 10,
+    paidFeatures: {
+      reminders: false,
+      ocrImport: false,
+      customShorthand: false,
+      customStyleCategories: false,
+      styleAttachments: false,
+    },
+  },
+  pro: {
+    id: "pro",
+    label: "Pro",
+    customerLimit: Infinity,
+    styleLimit: Infinity,
+    paidFeatures: {
+      reminders: true,
+      ocrImport: true,
+      customShorthand: true,
+      customStyleCategories: true,
+      styleAttachments: true,
+    },
+  },
+};
+
+function getUserPlan(user) {
+  return subscriptionPlans[user?.plan === "pro" ? "pro" : "free"];
+}
+
+function canUsePlanFeature(user, featureKey) {
+  return Boolean(getUserPlan(user).paidFeatures[featureKey]);
+}
+
+function getUpgradeMessage(featureName) {
+  return `${featureName} is a Pro feature. Measurement capture, review, saved records, and sharing stay free.`;
+}
+
 const featureToneStyles = {
   amber: {
     badge: { backgroundColor: palette.amber },
@@ -581,6 +630,10 @@ function getReminderCustomerSuggestions(records = [], searchTerm = "") {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const seenNames = new Set();
 
+  if (!normalizedSearch) {
+    return [];
+  }
+
   const matches = records
     .map((record) => {
       const name = getRecordCustomerName(record);
@@ -628,6 +681,47 @@ function findReminderCustomerMatch(records = [], customerName = "") {
   }
 
   return records.find((record) => getRecordCustomerName(record).toLowerCase() === normalizedName) || null;
+}
+
+function getStyleCustomerSuggestions(records = [], searchTerm = "", attachedCustomers = []) {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const attachedIds = new Set(attachedCustomers.map((customer) => String(customer.cloudCustomerId || customer.customerId)));
+
+  if (!normalizedSearch) {
+    return [];
+  }
+
+  return records
+    .map((record) => {
+      const name = getRecordCustomerName(record);
+
+      return {
+        id: record.cloudCustomerId || record.id || name,
+        cloudCustomerId: record.cloudCustomerId || "",
+        name,
+        profile: record.measurementProfile === "female" ? "Female" : "Male",
+        updatedAt: record.updatedAt || record.createdAt,
+      };
+    })
+    .filter((record) => (
+      record.name &&
+      record.cloudCustomerId &&
+      !attachedIds.has(String(record.cloudCustomerId)) &&
+      (!normalizedSearch || record.name.toLowerCase().includes(normalizedSearch))
+    ))
+    .slice(0, 6);
+}
+
+function mergeStyleCategories(customCategories = []) {
+  return [...styleCategories, ...customCategories].reduce((list, category) => {
+    const cleanCategory = category?.trim();
+
+    if (!cleanCategory || list.some((item) => item.toLowerCase() === cleanCategory.toLowerCase())) {
+      return list;
+    }
+
+    return [...list, cleanCategory];
+  }, []);
 }
 
 function getRecordInitials(name = "") {
@@ -1273,6 +1367,8 @@ async function fetchProfile(user) {
       fullName: insertedProfile.full_name || "",
       username: insertedProfile.username || "",
       mode: insertedProfile.mode || "",
+      plan: insertedProfile.plan === "pro" ? "pro" : "free",
+      planStatus: insertedProfile.plan_status || "active",
       customShorthand: insertedProfile.custom_shorthand || {},
     };
   }
@@ -1283,6 +1379,8 @@ async function fetchProfile(user) {
     fullName: data.full_name || user.user_metadata?.full_name || "",
     username: data.username || user.user_metadata?.username || "",
     mode: data.mode || "",
+    plan: data.plan === "pro" ? "pro" : "free",
+    planStatus: data.plan_status || "active",
     customShorthand: data.custom_shorthand || {},
   };
 }
@@ -1431,9 +1529,12 @@ export default function App() {
   });
   const [styleLibrary, setStyleLibrary] = useState([]);
   const [stylesLoading, setStylesLoading] = useState(false);
+  const [customStyleCategories, setCustomStyleCategories] = useState([]);
   const [styleViewMode, setStyleViewMode] = useState("grid");
   const [styleSearch, setStyleSearch] = useState("");
   const [styleCategoryFilter, setStyleCategoryFilter] = useState("all");
+  const [styleAttachSearch, setStyleAttachSearch] = useState("");
+  const [newStyleCategory, setNewStyleCategory] = useState("");
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const [styleForm, setStyleForm] = useState({
@@ -1588,6 +1689,18 @@ export default function App() {
     reviewMeasurements,
     screen,
   ]);
+
+  useEffect(() => {
+    if (!status || !isPositiveStatus(status)) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setStatus((currentStatus) => (currentStatus === status ? "" : currentStatus));
+    }, 3200);
+
+    return () => clearTimeout(timeoutId);
+  }, [status]);
 
   useEffect(() => {
     if (screen !== "capture" || !cameraReady || capturing || captureCoolingDown) {
@@ -2412,9 +2525,16 @@ export default function App() {
     setStylesLoading(true);
     setStatus("");
 
-    const result = await fetchMobileStyles({ user: profile });
+    const [result, categoryResult] = await Promise.all([
+      fetchMobileStyles({ user: profile }),
+      fetchMobileStyleCategories({ user: profile }),
+    ]);
 
     setStylesLoading(false);
+
+    if (categoryResult.ok) {
+      setCustomStyleCategories(categoryResult.categories);
+    }
 
     if (!result.ok) {
       setStatus(result.message);
@@ -2605,6 +2725,11 @@ export default function App() {
 
     if (!profile?.id) {
       setStatus("Login again before saving shorthand.");
+      return;
+    }
+
+    if (!canUsePlanFeature(profile, "customShorthand")) {
+      setStatus(getUpgradeMessage("Custom shorthand"));
       return;
     }
 
@@ -3000,6 +3125,13 @@ export default function App() {
       return;
     }
 
+    const plan = getUserPlan(profile);
+
+    if (savedRecords.length >= plan.customerLimit) {
+      setStatus(`Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
+      return;
+    }
+
     if (!measurementDetails.customerName.trim()) {
       setStatus("Customer name is required before saving.");
       return;
@@ -3136,6 +3268,11 @@ export default function App() {
       return;
     }
 
+    if (!canUsePlanFeature(profile, "reminders")) {
+      setStatus(getUpgradeMessage("Reminders"));
+      return;
+    }
+
     if (!reminderForm.title.trim() && !reminderForm.customerName.trim()) {
       setStatus("Add a customer name or reminder title.");
       return;
@@ -3236,7 +3373,48 @@ export default function App() {
       notes: "",
       image: null,
     });
+    setNewStyleCategory("");
     setStatus("");
+  };
+
+  const handleSaveStyleCategory = async () => {
+    const cleanCategory = newStyleCategory.trim();
+
+    if (!canUsePlanFeature(profile, "customStyleCategories")) {
+      setStatus(getUpgradeMessage("Custom style categories"));
+      return;
+    }
+
+    if (!cleanCategory) {
+      setStatus("Enter a category name.");
+      return;
+    }
+
+    if (mergeStyleCategories(customStyleCategories).some((category) => category.toLowerCase() === cleanCategory.toLowerCase())) {
+      setStyleForm((currentForm) => ({ ...currentForm, category: cleanCategory }));
+      setNewStyleCategory("");
+      setStatus("Category selected.");
+      return;
+    }
+
+    setSaving(true);
+    setStatus("");
+
+    const result = await saveMobileStyleCategory({ user: profile, name: cleanCategory });
+
+    setSaving(false);
+
+    if (!result.ok) {
+      setStatus(result.message);
+      return;
+    }
+
+    setCustomStyleCategories((currentCategories) => mergeStyleCategories([...currentCategories, result.category]).filter((category) => (
+      !styleCategories.some((defaultCategory) => defaultCategory.toLowerCase() === category.toLowerCase())
+    )));
+    setStyleForm((currentForm) => ({ ...currentForm, category: result.category }));
+    setNewStyleCategory("");
+    setStatus("Category added.");
   };
 
   const handlePickStyleImage = async () => {
@@ -3269,6 +3447,13 @@ export default function App() {
   const handleSaveStyle = async () => {
     if (!profile?.id) {
       setStatus("Login again before saving.");
+      return;
+    }
+
+    const plan = getUserPlan(profile);
+
+    if (styleLibrary.length >= plan.styleLimit) {
+      setStatus(`Free plan saves up to ${plan.styleLimit} styles. Upgrade to Pro when you need a larger style library.`);
       return;
     }
 
@@ -3328,6 +3513,86 @@ export default function App() {
     setStatus("Style deleted.");
   };
 
+  const refreshStyleLibrary = async () => {
+    const refreshedStyles = await fetchMobileStyles({ user: profile });
+
+    if (!refreshedStyles.ok) {
+      setStatus(refreshedStyles.message);
+      return null;
+    }
+
+    setStyleLibrary(refreshedStyles.styles);
+    return refreshedStyles.styles;
+  };
+
+  const handleAttachStyleToCustomer = async (customer) => {
+    if (!selectedStyle || !profile?.id || saving) {
+      return;
+    }
+
+    if (!canUsePlanFeature(profile, "styleAttachments")) {
+      setStatus(getUpgradeMessage("Customer-style attachment"));
+      return;
+    }
+
+    setSaving(true);
+    setStatus("");
+
+    const result = await attachMobileStyleToCustomer({
+      user: profile,
+      style: selectedStyle,
+      customer,
+    });
+
+    setSaving(false);
+
+    if (!result.ok) {
+      setStatus(result.message);
+      return;
+    }
+
+    const refreshedStyles = await refreshStyleLibrary();
+    const refreshedStyle = refreshedStyles?.find((style) => style.cloudStyleId === selectedStyle.cloudStyleId);
+
+    if (refreshedStyle) {
+      setSelectedStyle(refreshedStyle);
+    }
+
+    setStyleAttachSearch("");
+    setStatus("Style attached to customer.");
+  };
+
+  const handleDetachStyleFromCustomer = async (attachment) => {
+    if (!selectedStyle || !profile?.id || saving) {
+      return;
+    }
+
+    setSaving(true);
+    setStatus("");
+
+    const result = await detachMobileStyleFromCustomer({
+      user: profile,
+      style: selectedStyle,
+      attachment,
+    });
+
+    setSaving(false);
+
+    if (!result.ok) {
+      setStatus(result.message);
+      return;
+    }
+
+    const refreshedStyles = await refreshStyleLibrary();
+    const refreshedStyle = refreshedStyles?.find((style) => style.cloudStyleId === selectedStyle.cloudStyleId);
+
+    if (refreshedStyle) {
+      setSelectedStyle(refreshedStyle);
+    }
+
+    setStatus("Style detached.");
+  };
+
   const handleSaveMeasurementResult = async () => {
     if (!profile?.id) {
       setStatus("Login again before saving.");
@@ -3336,6 +3601,13 @@ export default function App() {
 
     if (profile.mode === "tailor" && !measurementDetails.customerName.trim()) {
       setStatus("Customer name is required before saving.");
+      return;
+    }
+
+    const plan = getUserPlan(profile);
+
+    if (profile.mode === "tailor" && !editingSavedRecord && savedRecords.length >= plan.customerLimit) {
+      setStatus(`Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
       return;
     }
 
@@ -3822,7 +4094,7 @@ export default function App() {
       <AppShell active="measure" onNavigate={handleNavigate}>
         <AppHeader
           title="Choose photo source"
-          subtitle="Use the camera now or upload clear front and side photos."
+          subtitle={isClientMode ? "Use guided camera capture for your measurement photos." : "Use the camera now or upload clear front and side photos."}
           onBack={() => setScreen("home")}
         />
 
@@ -3861,13 +4133,15 @@ export default function App() {
                 tone="blue"
               />
             ) : null}
-            <PhotoSourceTile
-              icon="img"
-              title="Upload photos"
-              text="Choose existing front and side photos from your gallery."
-              onPress={handleStartPhotoUpload}
-              tone="teal"
-            />
+            {!isClientMode ? (
+              <PhotoSourceTile
+                icon="img"
+                title="Upload photos"
+                text="Choose existing front and side photos from your gallery."
+                onPress={handleStartPhotoUpload}
+                tone="teal"
+              />
+            ) : null}
           </View>
         </View>
       </AppShell>
@@ -5245,6 +5519,7 @@ export default function App() {
               text={`${styleLibrary.length} saved style${styleLibrary.length === 1 ? "" : "s"}.`}
               onPress={() => {
                 loadStyleLibrary();
+                loadSavedRecords({ openScreen: false });
                 setScreen("styleGallery");
               }}
               tone="teal"
@@ -5256,6 +5531,8 @@ export default function App() {
   }
 
   if (screen === "styleForm") {
+    const availableStyleCategories = mergeStyleCategories(customStyleCategories);
+
     return (
       <AppShell active="home" onNavigate={handleNavigate}>
         <AppHeader
@@ -5282,8 +5559,26 @@ export default function App() {
               placeholderTextColor="#8c8576"
               style={styles.input}
             />
+            {profile?.mode === "tailor" ? (
+              <View style={styles.inlineCategoryCreator}>
+                <TextInput
+                  value={newStyleCategory}
+                  onChangeText={setNewStyleCategory}
+                  placeholder="Create category, e.g. Senator wear"
+                  placeholderTextColor="#8c8576"
+                  style={[styles.input, styles.categoryInput]}
+                />
+                <Pressable
+                  disabled={saving}
+                  onPress={handleSaveStyleCategory}
+                  style={({ pressed }) => [styles.categoryAddButton, saving && styles.disabledButton, pressed && styles.pressed]}
+                >
+                  <Text style={styles.categoryAddButtonText}>Add</Text>
+                </Pressable>
+              </View>
+            ) : null}
             <View style={styles.reminderTypeGrid}>
-              {styleCategories.map((category) => (
+              {availableStyleCategories.map((category) => (
                 <Pressable
                   key={category}
                   onPress={() => setStyleForm((currentForm) => ({ ...currentForm, category }))}
@@ -5335,6 +5630,7 @@ export default function App() {
 
   if (screen === "styleGallery") {
     const searchableTerm = styleSearch.trim().toLowerCase();
+    const availableStyleCategories = mergeStyleCategories(customStyleCategories);
     const styleCategoryCounts = styleLibrary.reduce((counts, style) => ({
       ...counts,
       [style.category]: (counts[style.category] || 0) + 1,
@@ -5379,7 +5675,7 @@ export default function App() {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroller}>
-            {["all", ...styleCategories].map((category) => (
+            {["all", ...availableStyleCategories].map((category) => (
               <Pressable
                 key={category}
                 onPress={() => setStyleCategoryFilter(category)}
@@ -5425,6 +5721,8 @@ export default function App() {
                   key={style.id}
                   onPress={() => {
                     setSelectedStyle(style);
+                    setStyleAttachSearch("");
+                    loadSavedRecords({ openScreen: false });
                     setScreen("styleDetail");
                   }}
                   style={({ pressed }) => [
@@ -5469,6 +5767,9 @@ export default function App() {
   }
 
   if (screen === "styleDetail" && selectedStyle) {
+    const attachedCustomers = selectedStyle.attachedCustomers || [];
+    const customerSuggestions = getStyleCustomerSuggestions(savedRecords, styleAttachSearch, attachedCustomers);
+
     return (
       <AppShell active="home" onNavigate={handleNavigate}>
         <AppHeader
@@ -5491,6 +5792,63 @@ export default function App() {
               {selectedStyle?.updatedAt ? new Date(selectedStyle.updatedAt).toLocaleDateString() : "Saved"}
             </Text>
           </View>
+          {profile?.mode === "tailor" ? (
+            <View style={styles.infoPanel}>
+              <Text style={styles.policyTitle}>Attached customers</Text>
+              {attachedCustomers.length === 0 ? (
+                <Text style={styles.policyText}>No customer attached yet. Search a saved customer below.</Text>
+              ) : (
+                attachedCustomers.map((attachment) => (
+                  <View key={attachment.id || attachment.cloudCustomerId} style={styles.attachmentRow}>
+                    <View style={styles.recordAvatarSmall}>
+                      <Text style={styles.recordAvatarText}>{getRecordInitials(attachment.customerName)}</Text>
+                    </View>
+                    <View style={styles.recordBody}>
+                      <Text style={styles.recordName}>{attachment.customerName}</Text>
+                      <Text style={styles.recordDate}>Attached style</Text>
+                    </View>
+                    <Pressable
+                      disabled={saving}
+                      onPress={() => handleDetachStyleFromCustomer(attachment)}
+                      style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
+                    >
+                      <Text style={styles.recordDeleteText}>Remove</Text>
+                    </Pressable>
+                  </View>
+                ))
+              )}
+
+              <TextInput
+                value={styleAttachSearch}
+                onChangeText={setStyleAttachSearch}
+                placeholder="Search customer to attach"
+                placeholderTextColor="#8c8576"
+                style={styles.input}
+              />
+              {styleAttachSearch.trim() && customerSuggestions.length === 0 ? (
+                <Text style={styles.policyText}>No matching unattached customer found.</Text>
+              ) : null}
+              {customerSuggestions.length > 0 ? (
+                customerSuggestions.map((customer) => (
+                  <Pressable
+                    key={customer.id}
+                    disabled={saving}
+                    onPress={() => handleAttachStyleToCustomer(customer)}
+                    style={({ pressed }) => [styles.customerSuggestionButton, pressed && styles.pressed]}
+                  >
+                    <View>
+                      <Text style={styles.recordName}>{customer.name}</Text>
+                      <Text style={styles.recordDate}>{customer.profile} - {formatShortDate(customer.updatedAt)}</Text>
+                    </View>
+                    <Text style={styles.moreChevron}>{">"}</Text>
+                  </Pressable>
+                ))
+              ) : null}
+              {status ? (
+                <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
+              ) : null}
+            </View>
+          ) : null}
           <Pressable
             onPress={() => setStyleToDelete(selectedStyle)}
             style={({ pressed }) => [styles.deleteWideButton, pressed && styles.recordDeleteButtonPressed]}
@@ -5506,6 +5864,7 @@ export default function App() {
   if (screen === "more") {
     const moreItems = [
       { id: "profile", title: "Profile", text: "Account details and workspace mode." },
+      { id: "plans", title: "Plans", text: "Compare Free and Pro, then upgrade when payment is ready." },
       { id: "help", title: "Help", text: "Photo capture, review, and saving guidance." },
       { id: "privacy", title: "Privacy policy", text: "How measurement data and photos are handled." },
       { id: "about", title: "About TailorIQ", text: "What the app does and who it is for." },
@@ -5539,7 +5898,10 @@ export default function App() {
           {moreItems.map((item) => (
             <Pressable
               key={item.id}
-              onPress={() => setScreen(item.id)}
+              onPress={() => {
+                setStatus("");
+                setScreen(item.id);
+              }}
               style={({ pressed }) => [styles.moreItem, pressed && styles.pressed]}
             >
               <View>
@@ -5565,6 +5927,70 @@ export default function App() {
     );
   }
 
+  if (screen === "plans") {
+    const plan = getUserPlan(profile);
+    const freeItems = [
+      "Photo measurement and review",
+      "Share to username",
+      "Body guide result view",
+      "10 customer records",
+      "10 saved styles",
+    ];
+    const proItems = [
+      "Unlimited records and styles",
+      "Reminders",
+      "Book photo scanning",
+      "Custom shorthand",
+      "Style categories and customer attachment",
+    ];
+
+    return (
+      <AppShell active="more" onNavigate={handleNavigate}>
+        <AppHeader
+          title="Plans"
+          subtitle="Choose the workflow that matches how you use TailorIQ."
+          onBack={() => setScreen("more")}
+        />
+
+        <ScrollView contentContainerStyle={styles.reviewContent}>
+          <View style={styles.profileSummary}>
+            <Text style={styles.profileName}>Current plan: {plan.label}</Text>
+            <Text style={styles.profileMeta}>
+              Measurement capture, review, saved records, and sharing stay free.
+            </Text>
+          </View>
+
+          <View style={styles.planGrid}>
+            <View style={styles.planCard}>
+              <Text style={styles.planEyebrow}>Free</Text>
+              <Text style={styles.planTitle}>Start measuring</Text>
+              <Text style={styles.planPrice}>N0</Text>
+              {freeItems.map((item) => (
+                <Text key={item} style={styles.planItem}>- {item}</Text>
+              ))}
+            </View>
+
+            <View style={[styles.planCard, styles.planCardFeatured]}>
+              <Text style={styles.planEyebrow}>Pro</Text>
+              <Text style={styles.planTitle}>Run the workflow</Text>
+              <Text style={styles.planPrice}>Pricing soon</Text>
+              {proItems.map((item) => (
+                <Text key={item} style={styles.planItem}>- {item}</Text>
+              ))}
+              <Pressable
+                onPress={() => setStatus("Payment is not connected yet. Next step is adding Stripe or Paystack checkout.")}
+                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>Continue to payment</Text>
+              </Pressable>
+              {status ? <Text style={styles.actionNoticeText}>{status}</Text> : null}
+            </View>
+          </View>
+        </ScrollView>
+      </AppShell>
+    );
+  }
+
   if (screen === "profile") {
     return (
       <AppShell active="more" onNavigate={handleNavigate}>
@@ -5584,6 +6010,8 @@ export default function App() {
             <Text style={styles.infoValue}>{profile?.email || "Not added"}</Text>
             <Text style={styles.infoLabel}>Mode</Text>
             <Text style={styles.infoValue}>{profile?.mode === "client" ? "Client mode" : "Tailor mode"}</Text>
+            <Text style={styles.infoLabel}>Plan</Text>
+            <Text style={styles.infoValue}>{getUserPlan(profile).label}</Text>
           </View>
 
           <View style={styles.inlineSettingsBlock}>
@@ -6797,6 +7225,30 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+  inlineCategoryCreator: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  categoryInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  categoryAddButton: {
+    alignItems: "center",
+    backgroundColor: palette.black,
+    borderRadius: 12,
+    justifyContent: "center",
+    minHeight: 52,
+    minWidth: 72,
+    paddingHorizontal: 14,
+  },
+  categoryAddButtonText: {
+    color: palette.amber,
+    fontSize: 13,
+    fontWeight: "900",
+  },
   reminderTypeOption: {
     alignItems: "center",
     backgroundColor: "#efe5c8",
@@ -7907,6 +8359,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
+  recordAvatarSmall: {
+    alignItems: "center",
+    backgroundColor: palette.black,
+    borderColor: "rgba(255,159,0,0.32)",
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
   recordAvatarText: {
     color: palette.amber,
     fontSize: 13,
@@ -7915,6 +8377,29 @@ const styles = StyleSheet.create({
   recordBody: {
     flex: 1,
     minWidth: 0,
+  },
+  attachmentRow: {
+    alignItems: "center",
+    backgroundColor: "#fffaf0",
+    borderColor: palette.line,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+    padding: 10,
+  },
+  customerSuggestionButton: {
+    alignItems: "center",
+    backgroundColor: "#fffaf0",
+    borderColor: palette.line,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+    minHeight: 62,
+    padding: 12,
   },
   sharedSection: {
     marginBottom: 16,
@@ -7946,13 +8431,15 @@ const styles = StyleSheet.create({
   recordActionStack: {
     alignItems: "flex-end",
     gap: 8,
+    minWidth: 92,
   },
   recordViewButton: {
     alignItems: "center",
     backgroundColor: palette.black,
     borderRadius: 12,
     justifyContent: "center",
-    minHeight: 38,
+    minHeight: 40,
+    minWidth: 92,
     paddingHorizontal: 14,
   },
   recordViewText: {
@@ -8036,6 +8523,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: "center",
     minHeight: 40,
+    minWidth: 92,
     paddingHorizontal: 14,
   },
   recordDeleteButtonPressed: {
@@ -8282,6 +8770,47 @@ const styles = StyleSheet.create({
     color: palette.amberDark,
     fontSize: 18,
     fontWeight: "900",
+  },
+  planGrid: {
+    gap: 14,
+  },
+  planCard: {
+    backgroundColor: palette.panel,
+    borderColor: palette.line,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+  },
+  planCardFeatured: {
+    backgroundColor: palette.softGold,
+    borderColor: palette.amber,
+  },
+  planEyebrow: {
+    color: palette.amberDark,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  planTitle: {
+    color: "#15120b",
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 8,
+  },
+  planPrice: {
+    color: "#15120b",
+    fontSize: 24,
+    fontWeight: "900",
+    marginBottom: 14,
+    marginTop: 14,
+  },
+  planItem: {
+    color: "#4f473a",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 22,
+    marginBottom: 7,
   },
   infoPanel: {
     backgroundColor: palette.panel,

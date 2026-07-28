@@ -37,6 +37,7 @@ const clientNavItems = [
 
 const secondaryNavItems = [
   { id: "profile", label: "Profile", icon: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Z" },
+  { id: "plans", label: "Plans", icon: "M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm2 0v14h12V5H6Zm2 3h8v2H8V8Zm0 4h8v2H8v-2Zm0 4h5v2H8v-2Z" },
   { id: "help", label: "Help", icon: "M11 18h2v-2h-2v2Zm1-16a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm0-14a3 3 0 0 0-3 3h2a1 1 0 1 1 1 1c-1.1 0-2 .9-2 2v2h2v-2c1.1 0 2-.9 2-2a3 3 0 0 0-3-3Z" },
   { id: "privacy", label: "Privacy", icon: "M12 2 4 5v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V5l-8-3Zm0 2.18 6 2.25V11c0 4.1-2.45 8.07-6 9.82C8.45 19.07 6 15.1 6 11V6.43l6-2.25Z" },
   { id: "about", label: "About", icon: "M11 17h2v-6h-2v6Zm0-8h2V7h-2v2Zm1-7a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z" },
@@ -106,6 +107,47 @@ const AUTH_SESSION_STORAGE_KEY = "tailoriq_auth_session";
 const APP_THEME_STORAGE_KEY = "tailoriq_theme";
 const STYLE_IMAGE_BUCKET = "style-images";
 const MEASUREMENT_PHOTO_BUCKET = "measurement-photos";
+
+const subscriptionPlans = {
+  free: {
+    id: "free",
+    label: "Free",
+    customerLimit: 10,
+    styleLimit: 10,
+    paidFeatures: {
+      reminders: false,
+      ocrImport: false,
+      customShorthand: false,
+      customStyleCategories: false,
+      styleAttachments: false,
+    },
+  },
+  pro: {
+    id: "pro",
+    label: "Pro",
+    customerLimit: Infinity,
+    styleLimit: Infinity,
+    paidFeatures: {
+      reminders: true,
+      ocrImport: true,
+      customShorthand: true,
+      customStyleCategories: true,
+      styleAttachments: true,
+    },
+  },
+};
+
+function getUserPlan(user) {
+  return subscriptionPlans[user?.plan === "pro" ? "pro" : "free"];
+}
+
+function canUsePlanFeature(user, featureKey) {
+  return Boolean(getUserPlan(user).paidFeatures[featureKey]);
+}
+
+function getUpgradeMessage(featureName) {
+  return `${featureName} is a Pro feature. Measurement capture, review, saved records, and sharing stay free.`;
+}
 
 function isHiddenPhotoNote(message = "") {
   return message.toLowerCase().includes("missing some body details");
@@ -419,6 +461,8 @@ function mapProfileToUser(profile, fallbackUser = {}) {
     email: profile?.email || fallbackUser.email || "",
     username,
     mode: profile?.mode || "",
+    plan: profile?.plan === "pro" ? "pro" : "free",
+    planStatus: profile?.plan_status || "active",
     customShorthand: profile?.custom_shorthand || {},
     needsUsername: !username,
     authProvider: "supabase",
@@ -1275,6 +1319,49 @@ async function mapCloudStyleRow(row, user) {
   };
 }
 
+async function fetchSupabaseStyleAttachments(user) {
+  if (!supabase || !user?.id) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("customer_styles")
+    .select("id, style_id, customer_id, note, created_at, customers(id, fullname)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    const errorText = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+
+    if (
+      errorText.includes("42p01") ||
+      errorText.includes("customer_styles") ||
+      errorText.includes("could not find a relationship")
+    ) {
+      return {};
+    }
+
+    throw error;
+  }
+
+  return (data || []).reduce((groups, row) => {
+    if (!groups[row.style_id]) {
+      groups[row.style_id] = [];
+    }
+
+    groups[row.style_id].push({
+      id: row.id,
+      cloudCustomerId: row.customer_id,
+      customerId: row.customer_id,
+      customerName: row.customers?.fullname || "Customer",
+      note: row.note || "",
+      createdAt: row.created_at,
+    });
+
+    return groups;
+  }, {});
+}
+
 async function fetchSupabaseStyles(user) {
   if (!supabase || !user?.id) {
     return [];
@@ -1290,7 +1377,78 @@ async function fetchSupabaseStyles(user) {
     throw error;
   }
 
-  return Promise.all((data || []).map((style) => mapCloudStyleRow(style, user)));
+  const [mappedStyles, attachmentsByStyleId] = await Promise.all([
+    Promise.all((data || []).map((style) => mapCloudStyleRow(style, user))),
+    fetchSupabaseStyleAttachments(user),
+  ]);
+
+  return mappedStyles.map((style) => ({
+    ...style,
+    attachedCustomers: attachmentsByStyleId[style.cloudStyleId] || [],
+  }));
+}
+
+async function fetchSupabaseStyleCategories(user, mode = "tailor") {
+  if (!supabase || !user?.id) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("style_categories")
+    .select("name")
+    .eq("user_id", user.id)
+    .eq("mode", mode)
+    .order("name", { ascending: true });
+
+  if (error) {
+    const errorText = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+
+    if (
+      errorText.includes("42p01") ||
+      errorText.includes("style_categories") ||
+      errorText.includes("schema cache")
+    ) {
+      return [];
+    }
+
+    throw error;
+  }
+
+  return (data || []).map((category) => category.name).filter(Boolean);
+}
+
+async function saveSupabaseStyleCategory(name, user, mode = "tailor") {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  const cleanName = name?.trim();
+
+  if (!cleanName) {
+    return { ok: false, message: "Enter a category name." };
+  }
+
+  const { error } = await supabase
+    .from("style_categories")
+    .upsert({
+      user_id: user.id,
+      mode,
+      name: cleanName,
+    }, {
+      onConflict: "user_id,mode,name",
+    });
+
+  if (error) {
+    const errorText = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+
+    if (errorText.includes("42p01") || errorText.includes("style_categories") || errorText.includes("schema cache")) {
+      return { ok: false, message: "Run the style categories SQL before adding custom categories." };
+    }
+
+    return { ok: false, message: error.message };
+  }
+
+  return { ok: true, category: cleanName };
 }
 
 async function saveSupabaseStyle(style, user) {
@@ -1363,6 +1521,47 @@ async function deleteSupabaseStyle(style, user) {
     .delete()
     .eq("id", style.cloudStyleId)
     .eq("user_id", user.id);
+
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+async function attachSupabaseStyleToCustomer(style, customer, user) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  if (!style?.cloudStyleId) {
+    return { ok: false, message: "Save this style before attaching it to a customer." };
+  }
+
+  if (!customer?.cloudCustomerId) {
+    return { ok: false, message: "Choose a saved customer record before attaching this style." };
+  }
+
+  const { error } = await supabase
+    .from("customer_styles")
+    .upsert({
+      user_id: user.id,
+      style_id: style.cloudStyleId,
+      customer_id: customer.cloudCustomerId,
+    }, {
+      onConflict: "user_id,customer_id,style_id",
+    });
+
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+async function detachSupabaseStyleFromCustomer(style, attachment, user) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  const { error } = await supabase
+    .from("customer_styles")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("style_id", style.cloudStyleId)
+    .eq("customer_id", attachment.cloudCustomerId);
 
   return error ? { ok: false, message: error.message } : { ok: true };
 }
@@ -1954,7 +2153,7 @@ function AuthPage({ onGoogleLogin, onLogin, onPasswordReset, onSignup }) {
             <div className="mt-12 grid w-full max-w-xs gap-3">
               <button
                 type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setAuthMode("signup");
                     setAuthPanelOpen(true);
                     setAuthError("");
@@ -1967,7 +2166,7 @@ function AuthPage({ onGoogleLogin, onLogin, onPasswordReset, onSignup }) {
               </button>
               <button
                 type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setAuthMode("login");
                     setAuthPanelOpen(true);
                     setAuthError("");
@@ -2987,6 +3186,7 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
   const [deleteAccountStatus, setDeleteAccountStatus] = useState(null);
   const [deleteAccountSaving, setDeleteAccountSaving] = useState(false);
   const [profileSettingOpen, setProfileSettingOpen] = useState("");
+  const [planPaymentStatus, setPlanPaymentStatus] = useState("");
   const pageContent = {
     help: {
       eyebrow: "Help",
@@ -3025,10 +3225,12 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
   }, [currentUser?.username]);
 
   if (page === "profile") {
+    const plan = getUserPlan(currentUser);
     const profileRows = [
       { label: "Full name", value: currentUser?.fullName || "Not provided" },
       { label: "Email", value: currentUser?.email || "Not provided" },
       { label: "Username", value: currentUser?.username ? `@${currentUser.username}` : "Not provided" },
+      { label: "Plan", value: plan.label },
       { label: "Current mode", value: userMode === "client" ? "Client Mode" : "Tailor Mode" },
       { label: "Saved customer records", value: customerCount },
       { label: "Unfinished drafts", value: draftCount },
@@ -3163,7 +3365,7 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const parsedShorthand = parseCustomShorthandText(customShorthandText);
 
                     if (parsedShorthand.errors.length > 0) {
@@ -3174,10 +3376,10 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
                       return;
                     }
 
-                    onSaveCustomShorthand(parsedShorthand.customMap);
+                    const result = await onSaveCustomShorthand(parsedShorthand.customMap);
                     setCustomShorthandStatus({
-                      type: "success",
-                      message: "Custom shorthand saved.",
+                      type: result?.ok === false ? "error" : "success",
+                      message: result?.message || "Custom shorthand saved.",
                     });
                   }}
                   className="tiq-primary-action min-h-10 rounded-md px-4 text-sm font-semibold transition"
@@ -3237,6 +3439,78 @@ function SecondaryPage({ page, userMode, customerCount, draftCount, currentUser,
             Change mode
           </button>
           </div>
+      </section>
+    );
+  }
+
+  if (page === "plans") {
+    const plan = getUserPlan(currentUser);
+    const freeItems = [
+      "Photo measurement and human review",
+      "Share to username",
+      "Advanced body guide result view",
+      "Up to 10 customer records",
+      "Up to 10 saved styles",
+    ];
+    const proItems = [
+      "Unlimited customer records and styles",
+      "Reminders for fittings, pickup, and follow-up",
+      "Book photo scanning for manual measurements",
+      "Custom shorthand dictionary",
+      "Custom style categories and customer-style attachment",
+    ];
+
+    return (
+      <section className="mx-auto max-w-5xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-3xl font-semibold text-stone-950">Plans</h2>
+            <p className="mt-3 max-w-2xl text-stone-600">
+              Keep the measuring experience free, then upgrade when your shop needs faster organization tools.
+            </p>
+          </div>
+          <span className="w-fit rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900">
+            Current plan: {plan.label}
+          </span>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-stone-500">Free</p>
+            <h3 className="mt-2 text-2xl font-semibold text-stone-950">Start measuring</h3>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              Best for testing the app, personal measurement sharing, or a small customer list.
+            </p>
+            <p className="mt-5 text-3xl font-semibold text-stone-950">N0</p>
+            <ul className="mt-5 space-y-3 text-sm font-semibold text-stone-700">
+              {freeItems.map((item) => <li key={item}>- {item}</li>)}
+            </ul>
+          </article>
+
+          <article className="rounded-lg border border-amber-300 bg-amber-50 p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-amber-800">Pro</p>
+            <h3 className="mt-2 text-2xl font-semibold text-stone-950">Run the workflow</h3>
+            <p className="mt-2 text-sm leading-6 text-stone-700">
+              Best for tailors who want reminders, faster manual import, and better style organization.
+            </p>
+            <p className="mt-5 text-3xl font-semibold text-stone-950">Pricing soon</p>
+            <ul className="mt-5 space-y-3 text-sm font-semibold text-stone-800">
+              {proItems.map((item) => <li key={item}>- {item}</li>)}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setPlanPaymentStatus("Payment is not connected yet. Next step is adding Stripe or Paystack checkout.")}
+              className="tiq-primary-action mt-6 min-h-11 w-full rounded-md px-4 text-sm font-semibold transition"
+            >
+              Continue to payment
+            </button>
+            {planPaymentStatus && (
+              <div className="mt-3 rounded-md border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-amber-900">
+                {planPaymentStatus}
+              </div>
+            )}
+          </article>
+        </div>
       </section>
     );
   }
@@ -3616,6 +3890,18 @@ const styleCategories = [
   "Other",
 ];
 
+function mergeStyleCategories(customCategories = []) {
+  return [...styleCategories, ...customCategories].reduce((list, category) => {
+    const cleanCategory = category?.trim();
+
+    if (!cleanCategory || list.some((item) => item.toLowerCase() === cleanCategory.toLowerCase())) {
+      return list;
+    }
+
+    return [...list, cleanCategory];
+  }, []);
+}
+
 function readStyleImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3645,7 +3931,17 @@ function readStyleImage(file) {
   });
 }
 
-function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
+function StyleLibrary({
+  styles,
+  customers = [],
+  customCategories = [],
+  userMode,
+  onSaveStyle,
+  onDeleteStyle,
+  onAttachStyleToCustomer,
+  onDetachStyleFromCustomer,
+  onSaveStyleCategory,
+}) {
   const [activeStyleView, setActiveStyleView] = useState("home");
   const [formValues, setFormValues] = useState({
     title: "",
@@ -3658,6 +3954,8 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [galleryViewMode, setGalleryViewMode] = useState("grid");
   const [selectedStyle, setSelectedStyle] = useState(null);
+  const [styleAttachSearch, setStyleAttachSearch] = useState("");
+  const [newStyleCategory, setNewStyleCategory] = useState("");
   const [status, setStatus] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
   const isClientStyleMode = userMode === "client";
@@ -3686,6 +3984,13 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
       return searchable.includes(searchTerm.trim().toLowerCase());
     })
     .filter((style) => categoryFilter === "all" || style.category === categoryFilter);
+  const availableStyleCategories = mergeStyleCategories(customCategories);
+  const attachedCustomers = selectedStyle?.attachedCustomers || [];
+  const attachedIds = new Set(attachedCustomers.map((customer) => String(customer.cloudCustomerId || customer.customerId)));
+  const attachableCustomers = customers
+    .filter((customer) => customer.cloudCustomerId && !attachedIds.has(String(customer.cloudCustomerId)))
+    .filter((customer) => customer.fullname.toLowerCase().includes(styleAttachSearch.trim().toLowerCase()))
+    .slice(0, 6);
 
   const handleChange = (event) => {
     setFormValues((currentValues) => ({
@@ -3748,6 +4053,33 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
       imageDataUrl: "",
     });
     setStatus({ type: "success", message: "Style saved." });
+  };
+
+  const handleCreateCategory = async () => {
+    const cleanCategory = newStyleCategory.trim();
+
+    if (!cleanCategory) {
+      setStatus({ type: "error", message: "Enter a category name." });
+      return;
+    }
+
+    if (availableStyleCategories.some((category) => category.toLowerCase() === cleanCategory.toLowerCase())) {
+      setFormValues((currentValues) => ({ ...currentValues, category: cleanCategory }));
+      setNewStyleCategory("");
+      setStatus({ type: "success", message: "Category selected." });
+      return;
+    }
+
+    const result = await onSaveStyleCategory?.(cleanCategory);
+
+    if (!result?.ok) {
+      setStatus({ type: "error", message: result?.message || "Category could not be saved." });
+      return;
+    }
+
+    setFormValues((currentValues) => ({ ...currentValues, category: result.category }));
+    setNewStyleCategory("");
+    setStatus({ type: "success", message: "Category added." });
   };
 
   return (
@@ -3836,10 +4168,30 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
                 onChange={handleChange}
                 className="mt-2 min-h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
               >
-                {styleCategories.map((category) => (
+                {availableStyleCategories.map((category) => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
+              {!isClientStyleMode && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={newStyleCategory}
+                    onChange={(event) => {
+                      setNewStyleCategory(event.target.value);
+                      setStatus(null);
+                    }}
+                    className="min-h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                    placeholder="Create category"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    className="min-h-10 rounded-md bg-stone-950 px-4 text-sm font-semibold text-amber-300 transition hover:bg-stone-800"
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <label className="text-sm font-semibold text-stone-700" htmlFor="style-tags">Tags</label>
@@ -3904,7 +4256,7 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
               aria-label="Filter style category"
             >
               <option value="all">All categories</option>
-              {styleCategories.map((category) => (
+              {availableStyleCategories.map((category) => (
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>
@@ -3929,7 +4281,7 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
           <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {filteredStyles.map((style) => (
               <article key={style.id} className="group relative overflow-hidden rounded-md bg-stone-200 shadow-sm">
-                <button type="button" onClick={() => setSelectedStyle(style)} className="block w-full">
+                <button type="button" onClick={() => { setSelectedStyle(style); setStyleAttachSearch(""); }} className="block w-full">
                   <img src={style.imageDataUrl} alt={style.title || "Saved style"} className="aspect-square w-full object-cover" />
                   <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-6 text-left text-[0.65rem] font-semibold text-white opacity-0 transition group-hover:opacity-100">
                     {style.title || style.category}
@@ -3952,10 +4304,10 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
           <div className="mt-4 grid gap-3">
             {filteredStyles.map((style) => (
               <article key={style.id} className="grid grid-cols-[4rem_1fr] gap-3 rounded-lg border border-stone-200 bg-white p-2 shadow-sm sm:grid-cols-[5rem_1fr_auto] sm:items-center sm:p-3">
-                <button type="button" onClick={() => setSelectedStyle(style)} className="overflow-hidden rounded-md bg-stone-100">
+                <button type="button" onClick={() => { setSelectedStyle(style); setStyleAttachSearch(""); }} className="overflow-hidden rounded-md bg-stone-100">
                   <img src={style.imageDataUrl} alt={style.title || "Saved style"} className="aspect-square w-full object-cover" />
                 </button>
-                <button type="button" onClick={() => setSelectedStyle(style)} className="min-w-0 text-left">
+                <button type="button" onClick={() => { setSelectedStyle(style); setStyleAttachSearch(""); }} className="min-w-0 text-left">
                   <h3 className="break-words text-sm font-semibold text-stone-950">{style.title || "Untitled style"}</h3>
                   <p className="mt-1 text-xs font-semibold text-stone-500">{style.category}</p>
                   {style.tags && <p className="mt-1 line-clamp-1 text-xs text-amber-800">{style.tags}</p>}
@@ -4002,6 +4354,78 @@ function StyleLibrary({ styles, userMode, onSaveStyle, onDeleteStyle }) {
               </div>
               {selectedStyle.tags && <p className="mt-3 text-sm font-semibold text-amber-800">{selectedStyle.tags}</p>}
               {selectedStyle.notes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-stone-700">{selectedStyle.notes}</p>}
+              {!isClientStyleMode && (
+                <div className="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-3">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <h4 className="text-sm font-semibold text-stone-950">Attached customers</h4>
+                    <span className="text-xs font-bold text-stone-500">{attachedCustomers.length} linked</span>
+                  </div>
+                  {attachedCustomers.length === 0 ? (
+                    <p className="mt-2 text-sm text-stone-500">No customer attached yet.</p>
+                  ) : (
+                    <div className="mt-3 grid gap-2">
+                      {attachedCustomers.map((attachment) => (
+                        <div key={attachment.id || attachment.cloudCustomerId} className="flex items-center justify-between gap-3 rounded-md bg-white p-2">
+                          <span className="min-w-0 truncate text-sm font-semibold text-stone-900">{attachment.customerName}</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const ok = await onDetachStyleFromCustomer?.(selectedStyle, attachment);
+
+                              if (ok) {
+                                const nextStyle = {
+                                  ...selectedStyle,
+                                  attachedCustomers: attachedCustomers.filter((item) => item.cloudCustomerId !== attachment.cloudCustomerId),
+                                };
+                                setSelectedStyle(nextStyle);
+                              }
+                            }}
+                            className="rounded-md border border-[#A31621] px-3 py-1 text-xs font-semibold text-[#A31621] transition hover:bg-[#A31621] hover:text-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <input
+                    value={styleAttachSearch}
+                    onChange={(event) => setStyleAttachSearch(event.target.value)}
+                    className="mt-3 min-h-10 w-full rounded-md border border-stone-300 bg-white px-3 text-sm outline-none focus:border-amber-600 focus:ring-4 focus:ring-amber-100"
+                    placeholder="Search customer to attach"
+                  />
+                  <div className="mt-2 grid gap-2">
+                    {attachableCustomers.length === 0 ? (
+                      <p className="text-xs font-semibold text-stone-500">No matching unattached customer found.</p>
+                    ) : attachableCustomers.map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={async () => {
+                          const ok = await onAttachStyleToCustomer?.(selectedStyle, customer);
+
+                          if (ok) {
+                            const nextStyle = {
+                              ...selectedStyle,
+                              attachedCustomers: [
+                                { cloudCustomerId: customer.cloudCustomerId, customerName: customer.fullname },
+                                ...attachedCustomers,
+                              ],
+                            };
+                            setSelectedStyle(nextStyle);
+                            setStyleAttachSearch("");
+                          }
+                        }}
+                        className="flex min-h-10 items-center justify-between rounded-md border border-stone-200 bg-white px-3 text-left text-sm font-semibold text-stone-900 transition hover:border-amber-300 hover:bg-amber-50"
+                      >
+                        <span>{customer.fullname}</span>
+                        <span className="text-amber-700">Attach</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4936,7 +5360,7 @@ function parseManualMeasurementText(rawText, profileId, customShorthand = {}) {
   };
 }
 
-function ManualMeasurementForm({ importMode = false, customShorthand = {}, onBack, onSaveManual }) {
+function ManualMeasurementForm({ importMode = false, customShorthand = {}, allowOcr = true, onBack, onSaveManual }) {
   const [values, setValues] = useState({
     fullname: "",
     phone: "",
@@ -5083,6 +5507,11 @@ function ManualMeasurementForm({ importMode = false, customShorthand = {}, onBac
   const handleOcrImageChange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
+
+    if (!allowOcr) {
+      setQuickImportStatus({ type: "error", message: getUpgradeMessage("Book photo scanning") });
+      return;
+    }
 
     if (!file) {
       return;
@@ -5281,13 +5710,18 @@ function ManualMeasurementForm({ importMode = false, customShorthand = {}, onBac
               Use a bright, close photo of one measurement page. Printed or clearly written labels work best.
             </p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
-              <label className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 sm:min-h-10 sm:px-4">
-                Scan page
+              <label className={`inline-flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-semibold transition sm:min-h-10 sm:px-4 ${
+                allowOcr
+                  ? "cursor-pointer border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                  : "cursor-not-allowed border-amber-200 bg-amber-100 text-amber-900"
+              }`}>
+                {allowOcr ? "Scan page" : "Scan page - Pro"}
                 <input
                   className="sr-only"
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  disabled={!allowOcr}
                   onChange={handleOcrImageChange}
                 />
               </label>
@@ -6531,6 +6965,7 @@ function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [customers, setCustomers] = useState(loadStoredCustomers);
   const [styles, setStyles] = useState(loadStoredStyles);
+  const [customStyleCategories, setCustomStyleCategories] = useState([]);
   const [reminders, setReminders] = useState(loadStoredReminders);
   const [clientResult, setClientResult] = useState(loadStoredClientResult);
   const [sharedMeasurements, setSharedMeasurements] = useState(loadSharedMeasurements);
@@ -6625,6 +7060,7 @@ function App() {
   function clearWorkspaceState() {
     setCustomers([]);
     setStyles([]);
+    setCustomStyleCategories([]);
     setReminders([]);
     setClientResult(null);
     setSharedMeasurements([]);
@@ -6654,6 +7090,7 @@ function App() {
       cloudCustomers,
       cloudDrafts,
       cloudStyles,
+      cloudStyleCategories,
       cloudReminders,
       cloudShares,
       cloudClientResult,
@@ -6661,6 +7098,7 @@ function App() {
       nextMode === "tailor" ? fetchSupabaseTailorRecords(profileUser) : Promise.resolve([]),
       fetchSupabaseMeasurementDrafts(profileUser),
       fetchSupabaseStyles(profileUser),
+      fetchSupabaseStyleCategories(profileUser, nextMode || "tailor"),
       nextMode === "tailor" ? fetchSupabaseReminders(profileUser) : Promise.resolve([]),
       fetchSupabaseSharedMeasurements(profileUser),
       nextMode === "client" ? fetchSupabaseClientResult(profileUser) : Promise.resolve(null),
@@ -6669,6 +7107,7 @@ function App() {
     setCustomers(cloudCustomers);
     setMeasurementDrafts(cloudDrafts);
     setStyles(cloudStyles);
+    setCustomStyleCategories(cloudStyleCategories);
     setReminders(cloudReminders);
     setSharedMeasurements(cloudShares);
     setClientResult(cloudClientResult || null);
@@ -7521,6 +7960,17 @@ function App() {
     showCloudStatus("saving", "Saving final measurement...");
 
     if (!isClientMode) {
+      const plan = getUserPlan(currentUser);
+      const editingExistingCustomer = reviewedCustomer.editMode === "saved-record" || visibleCustomers.some((customer) => (
+        customer.id === savedCustomer.id ||
+        (savedCustomer.cloudCustomerId && customer.cloudCustomerId === savedCustomer.cloudCustomerId)
+      ));
+
+      if (!editingExistingCustomer && visibleCustomers.length >= plan.customerLimit) {
+        showCloudStatus("error", `Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
+        return;
+      }
+
       const cloudResult = await saveSupabaseTailorRecord(savedCustomer, currentUser);
 
       if (!cloudResult.ok) {
@@ -7568,6 +8018,13 @@ function App() {
   };
 
   const handleManualSave = async (manualData) => {
+    const plan = getUserPlan(currentUser);
+
+    if (visibleCustomers.length >= plan.customerLimit) {
+      showCloudStatus("error", `Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
+      return;
+    }
+
     if (!isOnline) {
       showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
       return;
@@ -7594,6 +8051,13 @@ function App() {
   };
 
   const handleSaveStyle = async (styleData) => {
+    const plan = getUserPlan(currentUser);
+
+    if (visibleStyles.length >= plan.styleLimit) {
+      showCloudStatus("error", `Free plan saves up to ${plan.styleLimit} styles. Upgrade to Pro when you need a larger style library.`);
+      return false;
+    }
+
     if (!isOnline) {
       showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
       return false;
@@ -7629,7 +8093,88 @@ function App() {
     });
   };
 
+  const handleSaveStyleCategory = async (categoryName) => {
+    if (!canUsePlanFeature(currentUser, "customStyleCategories")) {
+      const message = getUpgradeMessage("Custom style categories");
+      showCloudStatus("error", message);
+      return { ok: false, message };
+    }
+
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return { ok: false, message: "Connection is offline." };
+    }
+
+    showCloudStatus("saving", "Saving category...");
+    const result = await saveSupabaseStyleCategory(categoryName, currentUser, userMode);
+
+    if (!result.ok) {
+      showCloudStatus("error", `Category could not be saved. ${result.message}`);
+      return result;
+    }
+
+    setCustomStyleCategories((currentCategories) => mergeStyleCategories([...currentCategories, result.category]).filter((category) => (
+      !styleCategories.some((defaultCategory) => defaultCategory.toLowerCase() === category.toLowerCase())
+    )));
+    showCloudStatus("success", "Category saved.");
+    return result;
+  };
+
+  const refreshStyles = async () => {
+    const cloudStyles = await fetchSupabaseStyles(currentUser);
+    setStyles(cloudStyles);
+    return cloudStyles;
+  };
+
+  const handleAttachStyleToCustomer = async (style, customer) => {
+    if (!canUsePlanFeature(currentUser, "styleAttachments")) {
+      showCloudStatus("error", getUpgradeMessage("Customer-style attachment"));
+      return false;
+    }
+
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return false;
+    }
+
+    showCloudStatus("saving", "Attaching style...");
+    const result = await attachSupabaseStyleToCustomer(style, customer, currentUser);
+
+    if (!result.ok) {
+      showCloudStatus("error", `Style could not be attached. ${result.message}`);
+      return false;
+    }
+
+    await refreshStyles();
+    showCloudStatus("success", "Style attached to customer.");
+    return true;
+  };
+
+  const handleDetachStyleFromCustomer = async (style, attachment) => {
+    if (!isOnline) {
+      showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
+      return false;
+    }
+
+    showCloudStatus("saving", "Removing style attachment...");
+    const result = await detachSupabaseStyleFromCustomer(style, attachment, currentUser);
+
+    if (!result.ok) {
+      showCloudStatus("error", `Style attachment could not be removed. ${result.message}`);
+      return false;
+    }
+
+    await refreshStyles();
+    showCloudStatus("success", "Style detached.");
+    return true;
+  };
+
   const handleSaveReminder = async (reminderData) => {
+    if (!canUsePlanFeature(currentUser, "reminders")) {
+      showCloudStatus("error", getUpgradeMessage("Reminders"));
+      return false;
+    }
+
     if (!isOnline) {
       showCloudStatus("error", "Connection is offline. Try again when your connection returns.");
       return false;
@@ -7752,7 +8297,11 @@ function App() {
 
   const handleSaveCustomShorthand = async (customShorthand) => {
     if (!currentUser) {
-      return;
+      return { ok: false, message: "Login again before saving shorthand." };
+    }
+
+    if (!canUsePlanFeature(currentUser, "customShorthand")) {
+      return { ok: false, message: getUpgradeMessage("Custom shorthand") };
     }
 
     setAuthUsers((currentUsers) => currentUsers.map((user) => (
@@ -7768,6 +8317,8 @@ function App() {
         })
         .eq("id", currentUser.id);
     }
+
+    return { ok: true, message: "Custom shorthand saved." };
   };
 
   const handleConfirmDelete = async () => {
@@ -8010,9 +8561,14 @@ function App() {
         {activePage === "styles" && (
           <StyleLibrary
             styles={visibleStyles}
+            customers={visibleCustomers}
+            customCategories={customStyleCategories}
             userMode={userMode}
             onSaveStyle={handleSaveStyle}
             onDeleteStyle={handleDeleteStyle}
+            onSaveStyleCategory={handleSaveStyleCategory}
+            onAttachStyleToCustomer={handleAttachStyleToCustomer}
+            onDetachStyleFromCustomer={handleDetachStyleFromCustomer}
           />
         )}
 
@@ -8076,6 +8632,7 @@ function App() {
               <ManualMeasurementForm
                 importMode={measurementEntryMode === "manual-import"}
                 customShorthand={currentUser?.customShorthand}
+                allowOcr={canUsePlanFeature(currentUser, "ocrImport")}
                 onBack={() => setMeasurementEntryMode("manual-choice")}
                 onSaveManual={handleManualSave}
               />

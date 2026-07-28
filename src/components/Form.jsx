@@ -330,20 +330,33 @@ function CaptureMethodChoice({ isClientMode, referenceObject, scaleMode, measure
       <div className="grid gap-3 sm:grid-cols-2">
         <button
           type="button"
-          onClick={() => onChoose("camera")}
+          onClick={() => onChoose(isClientMode ? "self-camera" : "camera")}
           className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
         >
-          <span className="text-sm font-semibold text-stone-950">Use camera</span>
-          <span className="mt-2 block text-sm text-stone-600">Open the camera and capture the front and side views now.</span>
+          <span className="text-sm font-semibold text-stone-950">{isClientMode ? "Take it myself" : "Use camera"}</span>
+          <span className="mt-2 block text-sm text-stone-600">
+            {isClientMode ? "Use guided camera capture for your front and side photos." : "Open the camera and capture the front and side views now."}
+          </span>
         </button>
-        <button
-          type="button"
-          onClick={() => onChoose("upload")}
-          className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
-        >
-          <span className="text-sm font-semibold text-stone-950">Upload photos</span>
-          <span className="mt-2 block text-sm text-stone-600">Choose existing front and side photos from the device.</span>
-        </button>
+        {isClientMode ? (
+          <button
+            type="button"
+            onClick={() => onChoose("friend-camera")}
+            className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+          >
+            <span className="text-sm font-semibold text-stone-950">Someone is helping</span>
+            <span className="mt-2 block text-sm text-stone-600">Use the back camera while another person helps with the capture.</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onChoose("upload")}
+            className="min-h-28 rounded-lg border border-stone-200 bg-white p-4 text-left transition hover:border-amber-300 hover:bg-amber-50"
+          >
+            <span className="text-sm font-semibold text-stone-950">Upload photos</span>
+            <span className="mt-2 block text-sm text-stone-600">Choose existing front and side photos from the device.</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -600,7 +613,9 @@ function Form({ appMode = "tailor", currentUser, initialDraft, onBack, onDraftCh
     }
 
     if (stepId === "photos" && !hasPhotos) {
-      return "Capture or upload both front and side photos before continuing.";
+      return isClientMode
+        ? "Capture both front and side photos before continuing."
+        : "Capture or upload both front and side photos before continuing.";
     }
 
     if (stepId === "captureMethod" && !captureInputMode) {

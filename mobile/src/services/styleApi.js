@@ -4,6 +4,26 @@ import { Buffer } from "buffer";
 
 const STYLE_IMAGE_BUCKET = "style-images";
 
+function isMissingAttachmentTableError(error) {
+  const message = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+
+  return (
+    message.includes("42p01") ||
+    message.includes("customer_styles") ||
+    message.includes("could not find a relationship")
+  );
+}
+
+function isMissingStyleCategoryTableError(error) {
+  const message = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+
+  return (
+    message.includes("42p01") ||
+    message.includes("style_categories") ||
+    message.includes("schema cache")
+  );
+}
+
 function getMode(user) {
   return user?.mode || "client";
 }
@@ -83,6 +103,47 @@ async function mapStyleRow(row, user) {
   };
 }
 
+async function fetchMobileStyleAttachments({ user }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError(), attachmentsByStyleId: {} };
+  }
+
+  const { data, error } = await supabase
+    .from("customer_styles")
+    .select("id, style_id, customer_id, note, created_at, customers(id, fullname)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (isMissingAttachmentTableError(error)) {
+      return { ok: true, attachmentsByStyleId: {} };
+    }
+
+    return { ok: false, message: error.message, attachmentsByStyleId: {} };
+  }
+
+  const attachmentsByStyleId = (data || []).reduce((groups, row) => {
+    const styleId = row.style_id;
+
+    if (!groups[styleId]) {
+      groups[styleId] = [];
+    }
+
+    groups[styleId].push({
+      id: row.id,
+      cloudCustomerId: row.customer_id,
+      customerId: row.customer_id,
+      customerName: row.customers?.fullname || "Customer",
+      note: row.note || "",
+      createdAt: row.created_at,
+    });
+
+    return groups;
+  }, {});
+
+  return { ok: true, attachmentsByStyleId };
+}
+
 export async function fetchMobileStyles({ user }) {
   if (!supabase || !user?.id) {
     return { ok: false, message: getSupabaseConfigError(), styles: [] };
@@ -99,9 +160,15 @@ export async function fetchMobileStyles({ user }) {
     return { ok: false, message: error.message, styles: [] };
   }
 
+  const mappedStyles = await Promise.all((data || []).map((style) => mapStyleRow(style, user)));
+  const attachmentResult = await fetchMobileStyleAttachments({ user });
+
   return {
     ok: true,
-    styles: await Promise.all((data || []).map((style) => mapStyleRow(style, user))),
+    styles: mappedStyles.map((style) => ({
+      ...style,
+      attachedCustomers: attachmentResult.attachmentsByStyleId?.[style.cloudStyleId] || [],
+    })),
   };
 }
 
@@ -175,6 +242,110 @@ export async function deleteMobileStyle({ user, style }) {
     .delete()
     .eq("id", style.cloudStyleId)
     .eq("user_id", user.id);
+
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+export async function fetchMobileStyleCategories({ user }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError(), categories: [] };
+  }
+
+  const { data, error } = await supabase
+    .from("style_categories")
+    .select("id, name, mode, created_at")
+    .eq("user_id", user.id)
+    .eq("mode", getMode(user))
+    .order("name", { ascending: true });
+
+  if (error) {
+    if (isMissingStyleCategoryTableError(error)) {
+      return { ok: true, categories: [] };
+    }
+
+    return { ok: false, message: error.message, categories: [] };
+  }
+
+  return {
+    ok: true,
+    categories: (data || []).map((category) => category.name).filter(Boolean),
+  };
+}
+
+export async function saveMobileStyleCategory({ user, name }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  const cleanName = name?.trim();
+
+  if (!cleanName) {
+    return { ok: false, message: "Enter a category name." };
+  }
+
+  const { error } = await supabase
+    .from("style_categories")
+    .upsert({
+      user_id: user.id,
+      mode: getMode(user),
+      name: cleanName,
+    }, {
+      onConflict: "user_id,mode,name",
+    });
+
+  if (error) {
+    if (isMissingStyleCategoryTableError(error)) {
+      return { ok: false, message: "Run the style categories SQL before adding custom categories." };
+    }
+
+    return { ok: false, message: error.message };
+  }
+
+  return { ok: true, category: cleanName };
+}
+
+export async function attachMobileStyleToCustomer({ user, style, customer, note = "" }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  if (!style?.cloudStyleId) {
+    return { ok: false, message: "Save this style before attaching it to a customer." };
+  }
+
+  if (!customer?.cloudCustomerId) {
+    return { ok: false, message: "Choose a saved customer record before attaching this style." };
+  }
+
+  const { error } = await supabase
+    .from("customer_styles")
+    .upsert({
+      user_id: user.id,
+      style_id: style.cloudStyleId,
+      customer_id: customer.cloudCustomerId,
+      note: note?.trim() || null,
+    }, {
+      onConflict: "user_id,customer_id,style_id",
+    });
+
+  return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+export async function detachMobileStyleFromCustomer({ user, style, attachment }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  if (!style?.cloudStyleId || !attachment?.cloudCustomerId) {
+    return { ok: false, message: "This attachment could not be found." };
+  }
+
+  const { error } = await supabase
+    .from("customer_styles")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("style_id", style.cloudStyleId)
+    .eq("customer_id", attachment.cloudCustomerId);
 
   return error ? { ok: false, message: error.message } : { ok: true };
 }

@@ -666,15 +666,8 @@ function getFrameWarnings(metrics, label) {
 
 function getBodyFitWarnings(metrics, label, {
   minimum,
-  maximum = 0.96,
-  maxWidthToHeight = 0.7,
-  minBottomY = 0.74,
-  maxTopY = 0.24,
 } = {}) {
   const bodyHeightRatio = metrics?.bodyHeightRatio;
-  const bodyWidthToHeightRatio = metrics?.bodyWidthToHeightRatio;
-  const topY = metrics?.silhouetteLevels?.bodyTopY;
-  const bottomY = metrics?.silhouetteLevels?.bodyBottomY;
 
   if (!Number.isFinite(bodyHeightRatio)) {
     return [`${label} full-body check is missing. Retake the photo if the person is not clearly visible from head to feet.`];
@@ -684,23 +677,38 @@ function getBodyFitWarnings(metrics, label, {
     return [`${label} person is too small in the frame. Move the camera closer while keeping head and feet visible.`];
   }
 
-  if (bodyHeightRatio > maximum) {
-    return [`${label} person is too close to the camera. Move the camera back so the full body fits comfortably.`];
-  }
+  return [];
+}
 
-  if (Number.isFinite(topY) && topY > maxTopY) {
-    return [`${label} head area is not clearly inside the photo. Retake with the whole body visible from head to feet.`];
-  }
+function getBodyGuidanceWarnings(metrics, label, {
+  maximum = 0.985,
+  maxWidthToHeight = 0.78,
+  minBottomY = 0.7,
+  maxTopY = 0.3,
+} = {}) {
+  const warnings = [];
+  const bodyHeightRatio = metrics?.bodyHeightRatio;
+  const bodyWidthToHeightRatio = metrics?.bodyWidthToHeightRatio;
+  const topY = metrics?.silhouetteLevels?.bodyTopY;
+  const bottomY = metrics?.silhouetteLevels?.bodyBottomY;
 
-  if (Number.isFinite(bottomY) && bottomY < minBottomY) {
-    return [`${label} feet area is not clearly inside the photo. Retake with the whole body visible from head to feet.`];
+  if (Number.isFinite(bodyHeightRatio) && bodyHeightRatio > maximum) {
+    warnings.push(`${label} person fills almost the whole photo. Keep a little space around the head and feet when possible.`);
   }
 
   if (Number.isFinite(bodyWidthToHeightRatio) && bodyWidthToHeightRatio > maxWidthToHeight) {
-    return [`${label} outline looks too close or cropped for a full-body measurement. Step back and keep the full body in frame.`];
+    warnings.push(`${label} outline looks wide for the selected pose. Continue only if the full body is visible and the pose is correct.`);
   }
 
-  return [];
+  if (Number.isFinite(topY) && topY > maxTopY) {
+    warnings.push(`${label} body starts low in the frame. Keep the head visible with a little space above it when possible.`);
+  }
+
+  if (Number.isFinite(bottomY) && bottomY < minBottomY) {
+    warnings.push(`${label} body ends high in the frame. Keep the feet visible with a little space below them when possible.`);
+  }
+
+  return warnings;
 }
 
 function getRasterFrameMetrics(raster) {
@@ -924,10 +932,12 @@ function getPhotoCheckResult({ raster, view = "front" }) {
   const frameWarnings = getFrameWarnings(metrics, label);
   const fitWarnings = getBodyFitWarnings(metrics, label, {
     minimum: view === "side" ? 0.38 : 0.48,
-    maximum: view === "side" ? 0.96 : 0.96,
-    maxWidthToHeight: view === "side" ? 0.58 : 0.72,
-    minBottomY: view === "side" ? 0.7 : 0.74,
-    maxTopY: view === "side" ? 0.27 : 0.24,
+  });
+  const guidanceWarnings = getBodyGuidanceWarnings(metrics, label, {
+    maximum: view === "side" ? 0.99 : 0.99,
+    maxWidthToHeight: view === "side" ? 0.62 : 0.78,
+    minBottomY: view === "side" ? 0.68 : 0.72,
+    maxTopY: view === "side" ? 0.3 : 0.28,
   });
   const poseWarnings = getPoseQualityWarnings(metrics, label, view);
   const center = metrics.silhouetteLevels.bodyCenterX;
@@ -944,13 +954,14 @@ function getPhotoCheckResult({ raster, view = "front" }) {
       normalizedWarning.includes("blurry")
     );
   });
-  const blockingWarnings = [...fitWarnings, ...poseWarnings, ...centerWarning, ...blockingFrameWarnings];
+  const blockingWarnings = [...fitWarnings, ...blockingFrameWarnings];
+  const guidanceOnlyWarnings = [...poseWarnings, ...centerWarning, ...guidanceWarnings];
 
   return {
     ok: blockingWarnings.length === 0,
     metrics,
-    warnings: [...new Set([...blockingWarnings, ...frameWarnings])],
-    message: blockingWarnings[0] || frameWarnings[0] || `${label} is ready.`,
+    warnings: [...new Set([...blockingWarnings, ...guidanceOnlyWarnings, ...frameWarnings])],
+    message: blockingWarnings[0] || guidanceOnlyWarnings[0] || frameWarnings[0] || `${label} is ready.`,
   };
 }
 
@@ -988,17 +999,21 @@ function validateCapturePayload(payload) {
   const sideFrameWarnings = getFrameWarnings(sidePose, "Side view");
   const frontFitWarnings = getBodyFitWarnings(frontPose, "Front view", {
     minimum: 0.48,
-    maximum: 0.96,
-    maxWidthToHeight: 0.72,
-    minBottomY: 0.74,
-    maxTopY: 0.24,
   });
   const sideFitWarnings = getBodyFitWarnings(sidePose, "Side view", {
     minimum: 0.38,
-    maximum: 0.96,
-    maxWidthToHeight: 0.58,
-    minBottomY: 0.7,
-    maxTopY: 0.27,
+  });
+  const frontGuidanceWarnings = getBodyGuidanceWarnings(frontPose, "Front view", {
+    maximum: 0.99,
+    maxWidthToHeight: 0.78,
+    minBottomY: 0.72,
+    maxTopY: 0.28,
+  });
+  const sideGuidanceWarnings = getBodyGuidanceWarnings(sidePose, "Side view", {
+    maximum: 0.99,
+    maxWidthToHeight: 0.62,
+    minBottomY: 0.68,
+    maxTopY: 0.3,
   });
   const frontPoseWarnings = getPoseQualityWarnings(frontPose, "Front view", "front");
   const sidePoseWarnings = getPoseQualityWarnings(sidePose, "Side view", "side");
@@ -1016,11 +1031,16 @@ function validateCapturePayload(payload) {
   errors.push(
     ...frontFitWarnings,
     ...sideFitWarnings,
-    ...frontPoseWarnings,
-    ...sidePoseWarnings,
     ...blockingFrameWarnings,
   );
-  warnings.push(...frontFrameWarnings, ...sideFrameWarnings);
+  warnings.push(
+    ...frontGuidanceWarnings,
+    ...sideGuidanceWarnings,
+    ...frontPoseWarnings,
+    ...sidePoseWarnings,
+    ...frontFrameWarnings,
+    ...sideFrameWarnings,
+  );
 
   return { errors, warnings };
 }
