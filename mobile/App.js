@@ -24,6 +24,32 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
+import {
+  ArrowLeft,
+  Bell,
+  BookOpen,
+  Camera,
+  ChevronRight,
+  ClipboardList,
+  Edit3,
+  FileText,
+  Home,
+  Image as ImageIcon,
+  ListChecks,
+  MoreHorizontal,
+  Moon,
+  Palette,
+  Plus,
+  Ruler,
+  Save,
+  ScanText,
+  Shirt,
+  Sun,
+  Trash2,
+  Upload,
+  User,
+  Users,
+} from "lucide-react-native";
 
 import { buildMeasurementList, getProfileFields, roundMeasurement } from "./src/constants/measurementFields";
 import { validateCapturedPhoto } from "./src/services/captureValidationApi";
@@ -59,6 +85,8 @@ import { getSupabaseConfigError, hasSupabaseConfig, supabase, supabaseUrl } from
 
 const resultGuideMale = require("./assets/result-guide-male-cutout.png");
 const resultGuideFemale = require("./assets/result-guide-female-cutout.png");
+const captureStandingGuide = require("./assets/capture-standing-guide.png");
+const captureFemaleStandingGuide = require("./assets/capture-guide-female-standing.png");
 const authBackgroundImage = require("./assets/auth-background.png");
 
 const palette = {
@@ -284,6 +312,14 @@ function isNoisyPhotoWarning(message = "") {
     normalizedMessage.includes("move back only if") ||
     normalizedMessage.includes("very close to the frame edge") ||
     normalizedMessage.includes("person is too close to the camera") ||
+    normalizedMessage.includes("fills almost the whole photo") ||
+    normalizedMessage.includes("keep a little space around the head and feet") ||
+    normalizedMessage.includes("outline looks wide") ||
+    normalizedMessage.includes("continue only if the full body is visible") ||
+    normalizedMessage.includes("looks too close or too wide") ||
+    normalizedMessage.includes("step back and keep the full body visible") ||
+    normalizedMessage.includes("does not look fully side-facing") ||
+    normalizedMessage.includes("turn sideways so one shoulder and one hip face the camera") ||
     normalizedMessage.includes("missing some body details")
   );
 }
@@ -308,13 +344,7 @@ function isBlockingCaptureWarning(message = "") {
     normalizedMessage.includes("too small") ||
     normalizedMessage.includes("full-body check") ||
     normalizedMessage.includes("could not be checked") ||
-    normalizedMessage.includes("plain background") ||
-    normalizedMessage.includes("front-facing") ||
-    normalizedMessage.includes("side-facing") ||
-    normalizedMessage.includes("turn sideways") ||
-    normalizedMessage.includes("stand straight") ||
-    normalizedMessage.includes("arms may be too close") ||
-    normalizedMessage.includes("covering the waist")
+    normalizedMessage.includes("plain background")
   );
 }
 
@@ -370,13 +400,21 @@ function BrandMark({ compact = false, light = false }) {
   );
 }
 
+function IconGlyph({ Icon, color = "#15120b", size = 20, strokeWidth = 2.5, style }) {
+  if (!Icon) {
+    return null;
+  }
+
+  return <Icon color={color} size={size} strokeWidth={strokeWidth} style={style} />;
+}
+
 function AppHeader({ title, subtitle, onBack }) {
   return (
     <View style={styles.appHeader}>
       <View style={styles.appHeaderTop}>
         {onBack ? (
           <Pressable onPress={onBack} style={({ pressed }) => [styles.headerBackButton, activeLightMode && styles.headerBackButtonLight, pressed && styles.pressed]}>
-            <Text style={[styles.headerBackText, activeLightMode && styles.headerBackTextLight]}>{"<"}</Text>
+            <ArrowLeft color={activeLightMode ? "#15120b" : "#ffffff"} size={22} strokeWidth={2.8} />
           </Pressable>
         ) : (
           <BrandMark compact />
@@ -390,10 +428,10 @@ function AppHeader({ title, subtitle, onBack }) {
 
 function BottomNav({ active, onNavigate }) {
   const items = [
-    { id: "home", label: "Home", icon: "^" },
-    { id: "measure", label: "Measure", icon: "+" },
-    { id: "records", label: "Records", icon: "[]" },
-    { id: "more", label: "More", icon: "..." },
+    { id: "home", label: "Home", icon: Home },
+    { id: "measure", label: "Measure", icon: Plus },
+    { id: "records", label: "Records", icon: ClipboardList },
+    { id: "more", label: "More", icon: MoreHorizontal },
   ];
 
   return (
@@ -405,14 +443,12 @@ function BottomNav({ active, onNavigate }) {
             onPress={() => onNavigate(item.id)}
             style={[styles.navItem, active === item.id && styles.navItemActive]}
           >
-            <Text style={[
-              styles.navIcon,
-              activeLightMode && styles.navIconLight,
-              active === item.id && styles.navIconActive,
-            ]}
-            >
-              {item.icon}
-            </Text>
+            <IconGlyph
+              Icon={item.icon}
+              color={active === item.id ? palette.black : activeLightMode ? "#6f6759" : "#D8C9A8"}
+              size={20}
+              strokeWidth={2.7}
+            />
             <Text style={[
               styles.navLabel,
               activeLightMode && styles.navLabelLight,
@@ -449,6 +485,11 @@ function AppearanceToggle({ isLightMode, onToggle, compact = false }) {
         pressed && styles.pressed,
       ]}
     >
+      {isLightMode ? (
+        <Moon color="#15120b" size={15} strokeWidth={2.7} />
+      ) : (
+        <Sun color="#ffffff" size={15} strokeWidth={2.7} />
+      )}
       <Text style={[styles.appearanceButtonText, isLightMode && styles.appearanceButtonTextLight]}>
         {isLightMode ? "Dark" : "Light"}
       </Text>
@@ -466,6 +507,7 @@ function OfflineNotice({ message }) {
 
 function FeatureTile({ title, text, icon, onPress, tone = "slate" }) {
   const toneStyle = featureToneStyles[tone] || featureToneStyles.slate;
+  const Icon = icon;
 
   return (
     <Pressable
@@ -476,7 +518,11 @@ function FeatureTile({ title, text, icon, onPress, tone = "slate" }) {
       ]}
     >
       <View style={[styles.actionIconBadge, toneStyle.badge]}>
-        <Text style={[styles.actionIcon, toneStyle.text]}>{icon}</Text>
+        {typeof Icon === "function" ? (
+          <IconGlyph Icon={Icon} color={toneStyle.icon || toneStyle.text?.color || "#15120b"} size={22} />
+        ) : (
+          <Text style={[styles.actionIcon, toneStyle.text]}>{icon}</Text>
+        )}
       </View>
       <Text style={styles.actionTitle}>{title}</Text>
       <Text style={styles.actionText}>{text}</Text>
@@ -486,6 +532,7 @@ function FeatureTile({ title, text, icon, onPress, tone = "slate" }) {
 
 function PhotoSourceTile({ title, text, icon, onPress, tone = "slate", primary = false }) {
   const toneStyle = featureToneStyles[tone] || featureToneStyles.slate;
+  const Icon = icon;
 
   return (
     <Pressable
@@ -497,13 +544,32 @@ function PhotoSourceTile({ title, text, icon, onPress, tone = "slate", primary =
       ]}
     >
       <View style={[styles.photoSourceIconBadge, toneStyle.badge]}>
-        <Text style={[styles.photoSourceIcon, toneStyle.text]}>{icon}</Text>
+        {typeof Icon === "function" ? (
+          <IconGlyph Icon={Icon} color={toneStyle.icon || toneStyle.text?.color || "#15120b"} size={24} />
+        ) : (
+          <Text style={[styles.photoSourceIcon, toneStyle.text]}>{icon}</Text>
+        )}
       </View>
       <View style={styles.photoSourceBody}>
         <Text style={styles.photoSourceTitle}>{title}</Text>
         <Text style={styles.photoSourceText}>{text}</Text>
       </View>
-      <Text style={styles.photoSourceArrow}>{">"}</Text>
+      <ChevronRight color={palette.amberDark} size={22} strokeWidth={2.8} />
+    </Pressable>
+  );
+}
+
+function RecordActionButton({ label, Icon, onPress, danger = false }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        danger ? styles.recordDeleteButton : styles.recordViewButton,
+        pressed && (danger ? styles.recordDeleteButtonPressed : styles.pressed),
+      ]}
+    >
+      <IconGlyph Icon={Icon} color={danger ? "#C83434" : "#ffffff"} size={15} strokeWidth={2.7} />
+      <Text style={danger ? styles.recordDeleteText : styles.recordViewText}>{label}</Text>
     </Pressable>
   );
 }
@@ -935,16 +1001,28 @@ function ResultBodyGuide({ profileId, selectedMeasurement }) {
   const guideImage = profileId === "female" ? resultGuideFemale : resultGuideMale;
 
   return (
-    <View style={styles.resultGuidePanel}>
-      <View style={styles.resultGuideVisual}>
+    <View style={[styles.resultGuidePanel, activeLightMode && styles.resultGuidePanelLight]}>
+      <View style={[styles.resultGuideVisual, activeLightMode && styles.resultGuideVisualLight]}>
         <View style={styles.guideBodyWrap}>
+          <View pointerEvents="none" style={styles.guideFallbackBody}>
+            <View style={styles.guideHead} />
+            <View style={styles.guideNeck} />
+            <View style={styles.guideTorso} />
+            <View style={styles.guideHip} />
+            <View style={styles.guideLeftArm} />
+            <View style={styles.guideRightArm} />
+            <View style={styles.guideLeftLeg} />
+            <View style={styles.guideRightLeg} />
+            <View style={styles.guideLeftFoot} />
+            <View style={styles.guideRightFoot} />
+          </View>
           <Image source={guideImage} style={styles.guideBodyImage} resizeMode="contain" />
           <GuideMarker mark={mark} />
         </View>
       </View>
       <View style={styles.resultGuideCopy}>
-        <Text style={styles.resultGuideLabel}>{mark?.label || selectedMeasurement?.label || "Measurement guide"}</Text>
-        <Text style={styles.resultGuideInstruction}>{mark?.instruction || "Tap any measurement to see where it belongs on the body."}</Text>
+        <Text style={[styles.resultGuideLabel, activeLightMode && styles.resultGuideLabelLight]}>{mark?.label || selectedMeasurement?.label || "Measurement guide"}</Text>
+        <Text style={[styles.resultGuideInstruction, activeLightMode && styles.resultGuideInstructionLight]}>{mark?.instruction || "Tap any measurement to see where it belongs on the body."}</Text>
       </View>
     </View>
   );
@@ -952,8 +1030,8 @@ function ResultBodyGuide({ profileId, selectedMeasurement }) {
 
 function ResultControls({ viewMode, unit, onChangeViewMode, onChangeUnit }) {
   return (
-    <View style={styles.resultControlPanel}>
-      <View style={styles.resultControlGroup}>
+    <View style={[styles.resultControlPanel, activeLightMode && styles.resultControlPanelLight]}>
+      <View style={[styles.resultControlGroup, activeLightMode && styles.resultControlGroupLight]}>
         {["guide", "list"].map((mode) => (
           <Pressable
             key={mode}
@@ -961,11 +1039,13 @@ function ResultControls({ viewMode, unit, onChangeViewMode, onChangeUnit }) {
             style={[
               styles.resultControlButton,
               viewMode === mode && styles.resultControlButtonActive,
+              activeLightMode && viewMode !== mode && styles.resultControlButtonLight,
             ]}
           >
             <Text
               style={[
                 styles.resultControlText,
+                activeLightMode && viewMode !== mode && styles.resultControlTextLight,
                 viewMode === mode && styles.resultControlTextActive,
               ]}
             >
@@ -974,7 +1054,7 @@ function ResultControls({ viewMode, unit, onChangeViewMode, onChangeUnit }) {
           </Pressable>
         ))}
       </View>
-      <View style={styles.resultControlGroup}>
+      <View style={[styles.resultControlGroup, activeLightMode && styles.resultControlGroupLight]}>
         {["cm", "in"].map((nextUnit) => (
           <Pressable
             key={nextUnit}
@@ -982,11 +1062,13 @@ function ResultControls({ viewMode, unit, onChangeViewMode, onChangeUnit }) {
             style={[
               styles.resultUnitToggle,
               unit === nextUnit && styles.resultControlButtonActive,
+              activeLightMode && unit !== nextUnit && styles.resultControlButtonLight,
             ]}
           >
             <Text
               style={[
                 styles.resultControlText,
+                activeLightMode && unit !== nextUnit && styles.resultControlTextLight,
                 unit === nextUnit && styles.resultControlTextActive,
               ]}
             >
@@ -1017,11 +1099,13 @@ function ResultGuidePicker({ measurements, selectedIndex, onSelect }) {
           style={[
             styles.resultGuideChip,
             selectedIndex === index && styles.resultGuideChipActive,
+            activeLightMode && selectedIndex !== index && styles.resultGuideChipLight,
           ]}
         >
           <Text
             style={[
               styles.resultGuideChipText,
+              activeLightMode && selectedIndex !== index && styles.resultGuideChipTextLight,
               selectedIndex === index && styles.resultGuideChipTextActive,
             ]}
           >
@@ -1535,6 +1619,7 @@ export default function App() {
   const [styleCategoryFilter, setStyleCategoryFilter] = useState("all");
   const [styleAttachSearch, setStyleAttachSearch] = useState("");
   const [newStyleCategory, setNewStyleCategory] = useState("");
+  const [selectedBillingPlan, setSelectedBillingPlan] = useState("yearly");
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const [styleForm, setStyleForm] = useState({
@@ -1791,6 +1876,7 @@ export default function App() {
         const probePhoto = await cameraRef.current.takePictureAsync({
           quality: 0.22,
           skipProcessing: true,
+          shutterSound: false,
         });
         const validation = await validateCapturedPhoto({
           photo: probePhoto,
@@ -4104,7 +4190,7 @@ export default function App() {
           <View style={styles.photoSourceStack}>
             {isClientMode ? (
               <PhotoSourceTile
-                icon="me"
+                icon={User}
                 title="Take it myself"
                 text="Use the front camera with an automatic countdown."
                 onPress={() => {
@@ -4116,7 +4202,7 @@ export default function App() {
               />
             ) : (
               <PhotoSourceTile
-                icon="cam"
+                icon={Camera}
                 title="Use camera"
                 text="Capture front and side photos now."
                 onPress={() => openCaptureCamera({ mode: "assisted", step: "front" })}
@@ -4126,7 +4212,7 @@ export default function App() {
             )}
             {isClientMode ? (
               <PhotoSourceTile
-                icon="cam"
+                icon={Users}
                 title="Someone is helping"
                 text="Use the back camera with the guided shutter flow."
                 onPress={() => openCaptureCamera({ mode: "assisted", step: "front" })}
@@ -4135,7 +4221,7 @@ export default function App() {
             ) : null}
             {!isClientMode ? (
               <PhotoSourceTile
-                icon="img"
+                icon={Upload}
                 title="Upload photos"
                 text="Choose existing front and side photos from your gallery."
                 onPress={handleStartPhotoUpload}
@@ -4209,6 +4295,7 @@ export default function App() {
     const cameraFacing = captureMode === "self" ? "front" : "back";
     const isLiveReady = liveCaptureCheck.status === "ready";
     const showShutter = captureMode !== "self" && isLiveReady && !capturing && !captureCoolingDown;
+    const cameraGuideImage = measurementDetails.profile === "female" ? captureFemaleStandingGuide : captureStandingGuide;
     const guideReading = capturing
       ? "..."
       : countdown !== null
@@ -4250,7 +4337,7 @@ export default function App() {
               onPress={() => setScreen("home")}
               style={({ pressed }) => [styles.cameraBackButton, pressed && styles.pressed]}
             >
-              <Text style={styles.cameraBackText}>{"<"}</Text>
+              <ArrowLeft color="#ffffff" size={25} strokeWidth={2.9} />
             </Pressable>
             <View style={styles.capturePill}>
               <Text style={styles.capturePillText}>{captureLabel}</Text>
@@ -4259,18 +4346,15 @@ export default function App() {
           </View>
 
           <View style={styles.cameraGuideFigureWrap} pointerEvents="none">
-            <View style={[
-              styles.cameraGuideFigure,
-              captureStep === "side" && styles.cameraGuideFigureSide,
-              isLiveReady && styles.cameraGuideFigureReady,
-            ]}>
-              <View style={styles.cameraGuideHead} />
-              <View style={styles.cameraGuideTorso} />
-              <View style={styles.cameraGuideLegs}>
-                <View style={styles.cameraGuideLeg} />
-                <View style={styles.cameraGuideLeg} />
-              </View>
-            </View>
+            <Image
+              source={cameraGuideImage}
+              style={[
+                styles.cameraGuidePoseImage,
+                captureStep === "side" && styles.cameraGuidePoseImageSide,
+                isLiveReady && styles.cameraGuidePoseImageReady,
+              ]}
+              resizeMode="contain"
+            />
             <View style={[styles.cameraGuideReading, isLiveReady && styles.cameraGuideReadingReady]}>
               <Text style={styles.cameraGuideReadingText}>{guideReading}</Text>
             </View>
@@ -4472,7 +4556,7 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.reviewContent}>
           <View style={styles.photoSourceStack}>
           <PhotoSourceTile
-            icon="cm"
+            icon={Ruler}
             title="Type manually"
             text="Enter each measurement from your tape."
             onPress={() => openManualInputForm({ reset: true })}
@@ -4480,7 +4564,7 @@ export default function App() {
             primary
           />
           <PhotoSourceTile
-            icon="txt"
+            icon={ScanText}
             title="Paste shorthand"
             text="Import notes like B 36, W 30, H 42, SL 23."
             onPress={() => {
@@ -4738,10 +4822,6 @@ export default function App() {
         />
 
         <ScrollView contentContainerStyle={styles.reviewContent}>
-          {cleanPhotoWarnings(measurementResult?.warnings || []).length > 0 && (
-            <Text style={styles.warningText}>{cleanPhotoWarnings(measurementResult.warnings).join(" ")}</Text>
-          )}
-
           <View style={styles.resultHero}>
             <Text style={styles.resultHeroKicker}>{profile?.mode === "client" ? "Personal result" : "Client result"}</Text>
             <Text style={styles.resultHeroTitle}>{currentResultRecord.fullname || "Measurement review"}</Text>
@@ -4933,7 +5013,7 @@ export default function App() {
                         </View>
                         <Text style={styles.recordDate}>{formatShortDate(share.updatedAt || share.createdAt)}</Text>
                       </View>
-                      <Pressable
+                      <RecordActionButton
                       onPress={() => {
                         setSelectedRecord({
                           ...share.customer,
@@ -4943,10 +5023,9 @@ export default function App() {
                         setSelectedResultGuideIndex(0);
                         setScreen("recordDetail");
                       }}
-                        style={({ pressed }) => [styles.recordViewButton, pressed && styles.pressed]}
-                      >
-                        <Text style={styles.recordViewText}>View</Text>
-                      </Pressable>
+                        label="View"
+                        Icon={BookOpen}
+                      />
                     </View>
                   ))}
                 </View>
@@ -4969,22 +5048,21 @@ export default function App() {
                     <Text style={styles.recordDate}>{formatShortDate(record.updatedAt || record.createdAt)}</Text>
                   </View>
                   <View style={styles.recordActionStack}>
-                    <Pressable
+                    <RecordActionButton
                       onPress={() => {
                         setSelectedRecord(record);
                         setSelectedResultGuideIndex(0);
                         setScreen("recordDetail");
                       }}
-                      style={({ pressed }) => [styles.recordViewButton, pressed && styles.pressed]}
-                    >
-                      <Text style={styles.recordViewText}>View</Text>
-                    </Pressable>
-                    <Pressable
+                      label="View"
+                      Icon={BookOpen}
+                    />
+                    <RecordActionButton
                       onPress={() => setRecordToDelete(record)}
-                      style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
-                    >
-                      <Text style={styles.recordDeleteText}>Delete</Text>
-                    </Pressable>
+                      label="Delete"
+                      Icon={Trash2}
+                      danger
+                    />
                   </View>
                 </View>
               ))}
@@ -5019,10 +5097,6 @@ export default function App() {
         />
 
         <ScrollView contentContainerStyle={styles.reviewContent}>
-          {cleanPhotoWarnings(selectedRecord.segmentationWarnings || []).length > 0 && (
-            <Text style={styles.warningText}>{cleanPhotoWarnings(selectedRecord.segmentationWarnings).join(" ")}</Text>
-          )}
-
           <View style={styles.resultHero}>
             <Text style={styles.resultHeroKicker}>{selectedRecord.sharedByClient ? "Shared record" : "Saved record"}</Text>
             <Text style={styles.resultHeroTitle}>{selectedRecord.fullname || "Measurement"}</Text>
@@ -5130,6 +5204,7 @@ export default function App() {
               onPress={() => setRecordToDelete(selectedRecord)}
               style={({ pressed }) => [styles.deleteWideButton, pressed && styles.recordDeleteButtonPressed]}
             >
+              <Trash2 color="#C83434" size={15} strokeWidth={2.7} />
               <Text style={styles.recordDeleteText}>Delete record</Text>
             </Pressable>
           ) : null}
@@ -5198,18 +5273,17 @@ export default function App() {
                     <Text style={styles.recordDate}>{formatShortDate(draft.updatedAt || draft.createdAt)}</Text>
                   </View>
                   <View style={styles.recordActionStack}>
-                    <Pressable
+                    <RecordActionButton
                       onPress={() => handleContinueDraft(draft)}
-                      style={({ pressed }) => [styles.recordViewButton, pressed && styles.pressed]}
-                    >
-                      <Text style={styles.recordViewText}>Continue</Text>
-                    </Pressable>
-                    <Pressable
+                      label="Continue"
+                      Icon={ChevronRight}
+                    />
+                    <RecordActionButton
                       onPress={() => setDraftToDelete(draft)}
-                      style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
-                    >
-                      <Text style={styles.recordDeleteText}>Delete</Text>
-                    </Pressable>
+                      label="Delete"
+                      Icon={Trash2}
+                      danger
+                    />
                   </View>
                 </View>
               );
@@ -5234,7 +5308,7 @@ export default function App() {
           {status ? <Text style={styles.noticeText}>{status}</Text> : null}
           <View style={styles.photoSourceStack}>
             <PhotoSourceTile
-              icon="+"
+              icon={Bell}
               title="Save reminder"
               text="Add fitting, pickup, or follow-up work."
               onPress={() => {
@@ -5246,7 +5320,7 @@ export default function App() {
               primary
             />
             <PhotoSourceTile
-              icon="list"
+              icon={ListChecks}
               title="View reminders"
               text={`${reminders.length} active reminder${reminders.length === 1 ? "" : "s"}.`}
               onPress={() => {
@@ -5453,18 +5527,17 @@ export default function App() {
                     {reminder.note ? <Text style={styles.reminderNote}>{reminder.note}</Text> : null}
                   </View>
                   <View style={styles.recordActionStack}>
-                    <Pressable
+                    <RecordActionButton
                       onPress={() => handleEditReminder(reminder)}
-                      style={({ pressed }) => [styles.recordViewButton, pressed && styles.pressed]}
-                    >
-                      <Text style={styles.recordViewText}>Edit</Text>
-                    </Pressable>
-                    <Pressable
+                      label="Edit"
+                      Icon={Edit3}
+                    />
+                    <RecordActionButton
                       onPress={() => setReminderToDelete(reminder)}
-                      style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
-                    >
-                      <Text style={styles.recordDeleteText}>Delete</Text>
-                    </Pressable>
+                      label="Delete"
+                      Icon={Trash2}
+                      danger
+                    />
                   </View>
                 </View>
               ))}
@@ -5503,7 +5576,7 @@ export default function App() {
           {status ? <Text style={styles.noticeText}>{status}</Text> : null}
           <View style={styles.photoSourceStack}>
             <PhotoSourceTile
-              icon="+"
+              icon={Save}
               title={modeCopy.save}
               text="Choose an image, add details if needed, then save."
               onPress={() => {
@@ -5514,7 +5587,7 @@ export default function App() {
               primary
             />
             <PhotoSourceTile
-              icon="img"
+              icon={ImageIcon}
               title={modeCopy.gallery}
               text={`${styleLibrary.length} saved style${styleLibrary.length === 1 ? "" : "s"}.`}
               onPress={() => {
@@ -5754,6 +5827,7 @@ export default function App() {
                       pressed && styles.recordDeleteButtonPressed,
                     ]}
                   >
+                    <Trash2 color="#C83434" size={14} strokeWidth={2.7} />
                     <Text style={styles.styleDeleteQuickText}>Delete</Text>
                   </Pressable>
                 </Pressable>
@@ -5812,6 +5886,7 @@ export default function App() {
                       onPress={() => handleDetachStyleFromCustomer(attachment)}
                       style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
                     >
+                      <Trash2 color="#C83434" size={15} strokeWidth={2.7} />
                       <Text style={styles.recordDeleteText}>Remove</Text>
                     </Pressable>
                   </View>
@@ -5840,7 +5915,7 @@ export default function App() {
                       <Text style={styles.recordName}>{customer.name}</Text>
                       <Text style={styles.recordDate}>{customer.profile} - {formatShortDate(customer.updatedAt)}</Text>
                     </View>
-                    <Text style={styles.moreChevron}>{">"}</Text>
+                    <ChevronRight color={palette.amberDark} size={21} strokeWidth={2.8} />
                   </Pressable>
                 ))
               ) : null}
@@ -5853,6 +5928,7 @@ export default function App() {
             onPress={() => setStyleToDelete(selectedStyle)}
             style={({ pressed }) => [styles.deleteWideButton, pressed && styles.recordDeleteButtonPressed]}
           >
+            <Trash2 color="#C83434" size={15} strokeWidth={2.7} />
             <Text style={styles.recordDeleteText}>Delete style</Text>
           </Pressable>
         </ScrollView>
@@ -5908,7 +5984,7 @@ export default function App() {
                 <Text style={styles.moreItemTitle}>{item.title}</Text>
                 <Text style={styles.moreItemText}>{item.text}</Text>
               </View>
-              <Text style={styles.moreChevron}>{">"}</Text>
+              <ChevronRight color={palette.amberDark} size={21} strokeWidth={2.8} />
             </Pressable>
           ))}
 
@@ -5929,63 +6005,107 @@ export default function App() {
 
   if (screen === "plans") {
     const plan = getUserPlan(profile);
-    const freeItems = [
-      "Photo measurement and review",
-      "Share to username",
-      "Body guide result view",
-      "10 customer records",
-      "10 saved styles",
+    const planFeatures = [
+      "Unlimited customer records",
+      "Unlimited saved style ideas",
+      "Reminders for fittings and pickup",
+      "Book photo scanning for manual input",
+      "Custom shorthand dictionary",
+      "Create your own style categories",
+      "Attach style ideas to customers",
+      "Early access to workflow improvements",
     ];
-    const proItems = [
-      "Unlimited records and styles",
-      "Reminders",
-      "Book photo scanning",
-      "Custom shorthand",
-      "Style categories and customer attachment",
+    const billingOptions = [
+      {
+        id: "yearly",
+        title: "Yearly",
+        price: "N29,900.00",
+        note: "N2,491.67/month, billed yearly",
+        badge: "Save 69%",
+      },
+      {
+        id: "monthly",
+        title: "Monthly",
+        price: "N7,900.00",
+        note: "Billed monthly",
+      },
     ];
+    const selectedBilling = billingOptions.find((option) => option.id === selectedBillingPlan) || billingOptions[0];
 
     return (
       <AppShell active="more" onNavigate={handleNavigate}>
         <AppHeader
-          title="Plans"
-          subtitle="Choose the workflow that matches how you use TailorIQ."
+          title="Upgrade TailorIQ"
+          subtitle="Unlock the shop tools built around your measurement workflow."
           onBack={() => setScreen("more")}
         />
 
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          <View style={styles.profileSummary}>
-            <Text style={styles.profileName}>Current plan: {plan.label}</Text>
-            <Text style={styles.profileMeta}>
-              Measurement capture, review, saved records, and sharing stay free.
+        <ScrollView contentContainerStyle={styles.planScreenContent}>
+          <View style={[styles.premiumPlanCard, isLightMode && styles.premiumPlanCardLight]}>
+            <View style={styles.premiumBadgeRow}>
+              <Text style={styles.premiumBadge}>Tailor Shop</Text>
+              <Text style={[styles.premiumCurrentBadge, isLightMode && styles.premiumCurrentBadgeLight]}>
+                Current: {plan.label}
+              </Text>
+            </View>
+
+            <Text style={[styles.premiumPrice, isLightMode && styles.premiumPriceLight]}>{selectedBilling.price}</Text>
+            <Text style={[styles.premiumPriceNote, isLightMode && styles.premiumPriceNoteLight]}>{selectedBilling.note}</Text>
+
+            <Text style={[styles.premiumIntro, isLightMode && styles.premiumIntroLight]}>
+              Keep the measuring core free. Upgrade when your shop needs faster follow-up, better organization, and less manual admin work.
             </Text>
-          </View>
 
-          <View style={styles.planGrid}>
-            <View style={styles.planCard}>
-              <Text style={styles.planEyebrow}>Free</Text>
-              <Text style={styles.planTitle}>Start measuring</Text>
-              <Text style={styles.planPrice}>N0</Text>
-              {freeItems.map((item) => (
-                <Text key={item} style={styles.planItem}>- {item}</Text>
+            <View style={[styles.billingToggleRow, isLightMode && styles.billingToggleRowLight]}>
+              {billingOptions.map((option) => {
+                const active = selectedBillingPlan === option.id;
+
+                return (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => setSelectedBillingPlan(option.id)}
+                    style={({ pressed }) => [
+                      styles.billingToggle,
+                      active && styles.billingToggleActive,
+                      isLightMode && !active && styles.billingToggleLight,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.billingToggleText,
+                      isLightMode && !active && styles.billingToggleTextLight,
+                      active && styles.billingToggleTextActive,
+                    ]}>
+                      {option.title}
+                    </Text>
+                    {option.badge ? <Text style={styles.billingToggleBadge}>{option.badge}</Text> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.premiumFeatureList}>
+              {planFeatures.map((feature) => (
+                <View key={feature} style={styles.premiumFeatureRow}>
+                  <Plus color={palette.amber} size={18} strokeWidth={3} />
+                  <Text style={[styles.premiumFeatureText, isLightMode && styles.premiumFeatureTextLight]}>{feature}</Text>
+                </View>
               ))}
             </View>
 
-            <View style={[styles.planCard, styles.planCardFeatured]}>
-              <Text style={styles.planEyebrow}>Pro</Text>
-              <Text style={styles.planTitle}>Run the workflow</Text>
-              <Text style={styles.planPrice}>Pricing soon</Text>
-              {proItems.map((item) => (
-                <Text key={item} style={styles.planItem}>- {item}</Text>
-              ))}
-              <Pressable
-                onPress={() => setStatus("Payment is not connected yet. Next step is adding Stripe or Paystack checkout.")}
-                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.primaryButtonText}>Continue to payment</Text>
-              </Pressable>
-              {status ? <Text style={styles.actionNoticeText}>{status}</Text> : null}
-            </View>
+            <Pressable
+              onPress={() => setStatus(`Payment is not connected yet. Next step is adding Stripe or Paystack checkout for ${selectedBilling.title}.`)}
+              style={({ pressed }) => [styles.planUpgradeButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.planUpgradeButtonText}>Get Tailor Shop</Text>
+            </Pressable>
+
+            {status ? <Text style={[styles.premiumStatusText, isLightMode && styles.premiumStatusTextLight]}>{status}</Text> : null}
           </View>
+
+          <Text style={[styles.planFooterNote, isLightMode && styles.planFooterNoteLight]}>
+            Photo measurement, review, body guide, saved results, and sharing remain part of the free TailorIQ experience.
+          </Text>
         </ScrollView>
       </AppShell>
     );
@@ -6332,14 +6452,14 @@ export default function App() {
             {profile?.mode === "tailor" ? (
               <>
                 <FeatureTile
-                  icon="cm"
+                  icon={Ruler}
                   title="Manual"
                   text="Save tape measurements."
                   onPress={handleStartManualInput}
                   tone="blue"
                 />
                 <FeatureTile
-                  icon="!"
+                  icon={Bell}
                   title="Reminders"
                   text={`${reminders.length} active reminder${reminders.length === 1 ? "" : "s"}.`}
                   onPress={() => loadReminders({ openScreen: true })}
@@ -6348,28 +6468,28 @@ export default function App() {
               </>
             ) : null}
             <FeatureTile
-              icon="..."
+              icon={FileText}
               title="Drafts"
               text={`${measurementDrafts.length} unfinished measurement${measurementDrafts.length === 1 ? "" : "s"}.`}
               onPress={() => loadMeasurementDrafts({ openScreen: true })}
               tone="violet"
             />
             <FeatureTile
-              icon="img"
+              icon={Palette}
               title="Styles"
               text={`${styleLibrary.length} saved idea${styleLibrary.length === 1 ? "" : "s"}.`}
               onPress={() => loadStyleLibrary({ openScreen: true })}
               tone="teal"
             />
             <FeatureTile
-              icon="[]"
+              icon={ClipboardList}
               title="Records"
               text="Open saved measurements."
               onPress={() => handleNavigate("records")}
               tone="amber"
             />
             <FeatureTile
-              icon="me"
+              icon={User}
               title="Mode"
               text="Switch workspace."
               onPress={() => setScreen("mode")}
@@ -6591,6 +6711,7 @@ const styles = StyleSheet.create({
   },
   shellBody: {
     flex: 1,
+    marginHorizontal: 20,
     paddingBottom: 88,
   },
   loadingScreen: {
@@ -6750,7 +6871,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     paddingBottom: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 20,
     position: "absolute",
     right: 0,
   },
@@ -7030,13 +7151,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 390,
   },
+  cameraGuidePoseImage: {
+    borderRadius: 22,
+    height: 360,
+    opacity: 0.58,
+    width: 300,
+  },
+  cameraGuidePoseImageSide: {
+    transform: [{ scaleX: 0.82 }],
+  },
+  cameraGuidePoseImageReady: {
+    opacity: 0.78,
+  },
   cameraGuideFigure: {
     alignItems: "center",
     opacity: 0.64,
     transform: [{ scaleX: 1 }],
+    width: 196,
   },
   cameraGuideFigureSide: {
-    transform: [{ scaleX: 0.42 }],
+    transform: [{ scaleX: 0.36 }],
   },
   cameraGuideFigureReady: {
     opacity: 0.88,
@@ -7044,26 +7178,68 @@ const styles = StyleSheet.create({
   cameraGuideHead: {
     backgroundColor: "rgba(255,255,255,0.86)",
     borderRadius: 28,
-    height: 56,
-    width: 48,
+    height: 54,
+    width: 46,
+  },
+  cameraGuideUpperBody: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 4,
+    width: "100%",
   },
   cameraGuideTorso: {
     backgroundColor: "rgba(255,255,255,0.82)",
-    borderTopLeftRadius: 42,
-    borderTopRightRadius: 42,
-    height: 144,
-    marginTop: 4,
-    width: 116,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    height: 142,
+    width: 96,
+  },
+  cameraGuideArm: {
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderRadius: 18,
+    height: 142,
+    marginTop: 26,
+    width: 22,
+  },
+  cameraGuideArmLeft: {
+    marginRight: 10,
+    transform: [{ rotate: "8deg" }],
+  },
+  cameraGuideArmRight: {
+    marginLeft: 10,
+    transform: [{ rotate: "-8deg" }],
+  },
+  cameraGuideHip: {
+    backgroundColor: "rgba(255,255,255,0.8)",
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    height: 38,
+    marginTop: -4,
+    width: 86,
   },
   cameraGuideLegs: {
     flexDirection: "row",
-    gap: 14,
+    gap: 16,
     marginTop: -2,
   },
   cameraGuideLeg: {
     backgroundColor: "rgba(255,255,255,0.82)",
-    height: 154,
-    width: 34,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    height: 146,
+    width: 30,
+  },
+  cameraGuideFeet: {
+    flexDirection: "row",
+    gap: 24,
+    marginTop: -1,
+  },
+  cameraGuideFoot: {
+    backgroundColor: "rgba(255,255,255,0.82)",
+    borderRadius: 8,
+    height: 12,
+    width: 38,
   },
   cameraGuideReading: {
     alignItems: "center",
@@ -7492,6 +7668,8 @@ const styles = StyleSheet.create({
     borderColor: "#C83434",
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 5,
     minHeight: 30,
     justifyContent: "center",
     paddingHorizontal: 10,
@@ -7689,6 +7867,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     padding: 14,
   },
+  resultGuidePanelLight: {
+    backgroundColor: "#fffaf0",
+    borderColor: "rgba(196,111,0,0.22)",
+  },
   resultGuideVisual: {
     alignItems: "center",
     backgroundColor: "#111820",
@@ -7700,9 +7882,21 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: GUIDE_WIDTH,
   },
+  resultGuideVisualLight: {
+    backgroundColor: "#fff4d8",
+    borderColor: "rgba(196,111,0,0.2)",
+  },
   guideBodyWrap: {
     height: GUIDE_HEIGHT,
     position: "relative",
+    width: GUIDE_WIDTH,
+  },
+  guideFallbackBody: {
+    height: GUIDE_HEIGHT,
+    left: 0,
+    opacity: 0.5,
+    position: "absolute",
+    top: 0,
     width: GUIDE_WIDTH,
   },
   guideBodyImage: {
@@ -7835,12 +8029,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
   },
+  resultGuideLabelLight: {
+    color: "#15120b",
+  },
   resultGuideInstruction: {
     color: "#cbd5e1",
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 18,
     marginTop: 8,
+  },
+  resultGuideInstructionLight: {
+    color: "#5f584c",
   },
   resultControlPanel: {
     alignItems: "center",
@@ -7853,6 +8053,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     padding: 6,
   },
+  resultControlPanelLight: {
+    backgroundColor: "#fff6df",
+    borderColor: "rgba(196,111,0,0.18)",
+  },
   resultControlGroup: {
     backgroundColor: "rgba(0,0,0,0.18)",
     borderRadius: 14,
@@ -7860,10 +8064,16 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 3,
   },
+  resultControlGroupLight: {
+    backgroundColor: "#efe3c6",
+  },
   resultControlButton: {
     borderRadius: 11,
     paddingHorizontal: 12,
     paddingVertical: 7,
+  },
+  resultControlButtonLight: {
+    backgroundColor: "#fffdf6",
   },
   resultUnitToggle: {
     borderRadius: 11,
@@ -7878,6 +8088,9 @@ const styles = StyleSheet.create({
     color: "#f7e9c2",
     fontSize: 11,
     fontWeight: "900",
+  },
+  resultControlTextLight: {
+    color: "#5f584c",
   },
   resultControlTextActive: {
     color: "#15120b",
@@ -7894,6 +8107,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  resultGuideChipLight: {
+    backgroundColor: "#fffaf0",
+    borderColor: "rgba(196,111,0,0.18)",
+  },
   resultGuideChipActive: {
     backgroundColor: palette.amber,
     borderColor: palette.amber,
@@ -7902,6 +8119,9 @@ const styles = StyleSheet.create({
     color: "#f7e9c2",
     fontSize: 11,
     fontWeight: "900",
+  },
+  resultGuideChipTextLight: {
+    color: "#5f584c",
   },
   resultGuideChipTextActive: {
     color: "#15120b",
@@ -8437,6 +8657,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: palette.black,
     borderRadius: 12,
+    flexDirection: "row",
+    gap: 6,
     justifyContent: "center",
     minHeight: 40,
     minWidth: 92,
@@ -8521,6 +8743,8 @@ const styles = StyleSheet.create({
     borderColor: "#C83434",
     borderRadius: 12,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
     justifyContent: "center",
     minHeight: 40,
     minWidth: 92,
@@ -8540,6 +8764,8 @@ const styles = StyleSheet.create({
     borderColor: "#C83434",
     borderRadius: 14,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 7,
     justifyContent: "center",
     marginTop: 18,
     minHeight: 46,
@@ -8719,6 +8945,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,159,0,0.22)",
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
     justifyContent: "center",
     minHeight: 38,
     minWidth: 78,
@@ -8771,46 +8999,187 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "900",
   },
-  planGrid: {
-    gap: 14,
+  planScreenContent: {
+    paddingBottom: 36,
   },
-  planCard: {
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
+  premiumPlanCard: {
+    backgroundColor: "#11100e",
+    borderColor: "rgba(255,159,0,0.3)",
     borderRadius: 22,
     borderWidth: 1,
-    padding: 18,
+    padding: 22,
   },
-  planCardFeatured: {
-    backgroundColor: palette.softGold,
-    borderColor: palette.amber,
+  premiumPlanCardLight: {
+    backgroundColor: "#fff9ea",
+    borderColor: "rgba(196,111,0,0.42)",
   },
-  planEyebrow: {
-    color: palette.amberDark,
-    fontSize: 12,
+  premiumBadgeRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 26,
+  },
+  premiumBadge: {
+    backgroundColor: palette.amber,
+    borderRadius: 10,
+    color: "#15120b",
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 0.8,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  resultGuideChipLight: {
+    backgroundColor: "#fffaf0",
+    borderColor: "rgba(196,111,0,0.18)",
+  },
+  premiumCurrentBadge: {
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: "#d7c9a2",
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     textTransform: "uppercase",
   },
-  planTitle: {
-    color: "#15120b",
-    fontSize: 22,
-    fontWeight: "900",
-    marginTop: 8,
+  premiumCurrentBadgeLight: {
+    borderColor: "rgba(196,111,0,0.26)",
+    color: "#7a4b00",
   },
-  planPrice: {
-    color: "#15120b",
-    fontSize: 24,
+  premiumPrice: {
+    color: "#ffffff",
+    fontSize: 32,
     fontWeight: "900",
-    marginBottom: 14,
-    marginTop: 14,
   },
-  planItem: {
-    color: "#4f473a",
+  premiumPriceLight: {
+    color: "#15120b",
+  },
+  premiumPriceNote: {
+    color: "#d7c9a2",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  premiumPriceNoteLight: {
+    color: "#6f6759",
+  },
+  premiumIntro: {
+    color: "#b9afa1",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 20,
+    marginTop: 28,
+  },
+  premiumIntroLight: {
+    color: "#5f584c",
+  },
+  billingToggleRow: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 16,
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 18,
+    padding: 6,
+  },
+  billingToggleRowLight: {
+    backgroundColor: "#efe5c8",
+  },
+  billingToggle: {
+    alignItems: "center",
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 8,
+  },
+  billingToggleActive: {
+    backgroundColor: palette.amber,
+  },
+  billingToggleLight: {
+    backgroundColor: "#fffdf6",
+  },
+  billingToggleText: {
+    color: "#d7c9a2",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  billingToggleTextLight: {
+    color: "#5f584c",
+  },
+  billingToggleTextActive: {
+    color: "#15120b",
+  },
+  billingToggleBadge: {
+    color: "#15120b",
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  premiumFeatureList: {
+    gap: 14,
+    marginTop: 28,
+  },
+  premiumFeatureRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+  },
+  premiumFeatureIcon: {
+    color: palette.amber,
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 22,
+    width: 18,
+  },
+  premiumFeatureText: {
+    color: "#f8efe2",
+    flex: 1,
     fontSize: 14,
     fontWeight: "800",
     lineHeight: 22,
-    marginBottom: 7,
+  },
+  premiumFeatureTextLight: {
+    color: "#15120b",
+  },
+  planUpgradeButton: {
+    alignItems: "center",
+    backgroundColor: palette.amber,
+    borderRadius: 16,
+    justifyContent: "center",
+    marginTop: 30,
+    minHeight: 56,
+    paddingHorizontal: 16,
+  },
+  planUpgradeButtonText: {
+    color: "#15120b",
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  premiumStatusText: {
+    color: "#d7c9a2",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 19,
+    marginTop: 14,
+    textAlign: "center",
+  },
+  premiumStatusTextLight: {
+    color: "#7a4b00",
+  },
+  planFooterNote: {
+    color: "#a9a091",
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 19,
+    marginTop: 14,
+    textAlign: "center",
+  },
+  planFooterNoteLight: {
+    color: "#5f584c",
   },
   infoPanel: {
     backgroundColor: palette.panel,
