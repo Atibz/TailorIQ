@@ -5,6 +5,7 @@ import resultGuideMale from "./assets/images/result-guide-male-cutout.png";
 import { preventNumberInputWheel } from "./components/measurement/constants";
 import { requestSegmentationMeasurements } from "./services/segmentationMeasurementApi";
 import { getSupabaseConfigError, hasSupabaseConfig, supabase } from "./services/supabaseClient";
+import { fetchSharedStyleCategory } from "./services/styleCategoryShareApi";
 import {
   buildBackendMeasurements,
   buildCorrectionLog,
@@ -193,7 +194,7 @@ const privacySections = [
   {
     title: "Information you provide",
     items: [
-      "Account details such as full name, email address, username, and password for the current local account system.",
+      "Account details such as full name, email address, username, and password for sign up and login.",
       "Customer or client details entered during measurement, such as name, phone number when provided, gender profile, height, and measurement preferences.",
       "Front and side photos captured or uploaded for measurement generation.",
       "Manual measurement values, reviewed measurement values, fit notes, drafts, and saved records.",
@@ -214,12 +215,8 @@ const privacySections = [
     body: "Photos are used only for the measurement workflow. Because body photos are sensitive, users should capture them in a private setting, avoid sharing them unless necessary, and only send them to a tailor when they have clearly chosen to include photos.",
   },
   {
-    title: "Local storage today",
-    body: "In the current development version, account data, drafts, customer records, and shared measurement data are saved on the device/browser being used. This means clearing browser storage, changing devices, or using another browser can remove or hide local data.",
-  },
-  {
-    title: "Cloud storage before public launch",
-    body: "Before a public production release, TailorIQ should move records to a secure cloud backend with proper authentication, encrypted transport, access controls, account recovery, and clear deletion/export options. Users should not treat the current local prototype as permanent cloud backup.",
+    title: "Account storage",
+    body: "TailorIQ stores account records, drafts, saved measurements, reminders, saved styles, and shared measurement data in the app backend so users can return to their work from supported devices after signing in.",
   },
   {
     title: "Sharing measurements",
@@ -450,6 +447,10 @@ function saveStoredSession(session) {
   } catch {
     // Keep the app usable if storage is unavailable.
   }
+}
+
+function shouldUseLocalFallbackStorage() {
+  return !hasSupabaseConfig;
 }
 
 function mapProfileToUser(profile, fallbackUser = {}) {
@@ -4041,7 +4042,7 @@ function StyleLibrary({
     });
 
     if (!saved) {
-      setStatus({ type: "error", message: "Style could not be saved. Browser storage may be full." });
+      setStatus({ type: "error", message: "Style could not be saved. Check your connection and try again." });
       return;
     }
 
@@ -4582,7 +4583,7 @@ function Reminders({ reminders, customers, onSaveReminder, onUpdateReminder, onD
     const saved = await onSaveReminder(reminderPayload);
 
     if (!saved) {
-      setStatus({ type: "error", message: "Reminder could not be saved. Browser storage may be full." });
+      setStatus({ type: "error", message: "Reminder could not be saved. Check your connection and try again." });
       return;
     }
 
@@ -6644,9 +6645,6 @@ function MeasurementResults({ customer, onBack, onEdit, onDelete, onShareToTailo
               />
               <span>Include the front and side photos with this share.</span>
             </label>
-            <p className="mt-2 text-xs leading-5 text-stone-500">
-              Username sharing is saved on this device until online accounts are connected.
-            </p>
           </div>
           <div className="mt-4 rounded-md border border-amber-200 bg-white p-3">
             <p className="text-xs font-semibold uppercase text-stone-500">Preview</p>
@@ -6952,26 +6950,131 @@ function PasswordResetPage({ onUpdatePassword }) {
   );
 }
 
-function App() {
-  const [authUsers, setAuthUsers] = useState(loadStoredUsers);
-  const [authSession, setAuthSession] = useState(loadStoredSession);
+function getSharedStyleTokenFromPath() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const match = window.location.pathname.match(/^\/shared\/styles\/([^/?#]+)/);
+
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function SharedStyleCategoryPage({ token }) {
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("");
+  const [share, setShare] = useState(null);
+  const [sharedStyles, setSharedStyles] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSharedStyles() {
+      setLoading(true);
+      setStatus("");
+
+      const result = await fetchSharedStyleCategory(token);
+
+      if (!mounted) {
+        return;
+      }
+
+      setLoading(false);
+
+      if (!result.ok) {
+        setStatus(result.message);
+        setShare(null);
+        setSharedStyles([]);
+        return;
+      }
+
+      setShare(result.share);
+      setSharedStyles(result.styles);
+    }
+
+    loadSharedStyles();
+
+    return () => {
+      mounted = false;
+    };
+  }, [token]);
+
+  const tailorName = share?.tailor_name || share?.tailor_username || "TailorIQ";
+
+  return (
+    <main className="min-h-screen bg-[#fff9ea] px-4 py-6 text-stone-950 sm:px-8">
+      <section className="mx-auto max-w-6xl">
+        <div className="mb-8 rounded-[2rem] border border-amber-200 bg-[#15120b] p-6 text-white shadow-xl sm:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-400">TailorIQ style share</p>
+          <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl">
+            {share?.category || "Shared styles"}
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-amber-50/80">
+            {tailorName} shared this style category for you to view. Save the link or send a preferred style back to your tailor.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="rounded-3xl border border-amber-100 bg-white p-8 text-center text-sm font-bold text-stone-600 shadow-sm">
+            Loading shared styles...
+          </div>
+        ) : status ? (
+          <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center text-sm font-bold text-red-700">
+            {status}
+          </div>
+        ) : sharedStyles.length === 0 ? (
+          <div className="rounded-3xl border border-amber-100 bg-white p-8 text-center shadow-sm">
+            <h2 className="text-2xl font-black">No styles in this category yet</h2>
+            <p className="mt-2 text-sm font-semibold text-stone-500">Ask the tailor to add styles, then open this link again.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+            {sharedStyles.map((style) => (
+              <article key={style.id} className="overflow-hidden rounded-3xl border border-amber-100 bg-white shadow-sm">
+                <div className="aspect-[4/5] bg-stone-950">
+                  {style.imageUrl ? (
+                    <img src={style.imageUrl} alt={style.title} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full place-items-center px-4 text-center text-xs font-bold text-amber-100">
+                      Image unavailable
+                    </div>
+                  )}
+                </div>
+                <div className="p-3 sm:p-4">
+                  <h2 className="text-sm font-black text-stone-950 sm:text-base">{style.title || style.category}</h2>
+                  {style.notes ? (
+                    <p className="mt-2 line-clamp-3 text-xs font-semibold leading-5 text-stone-500">{style.notes}</p>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function AuthenticatedApp() {
+  const [authUsers, setAuthUsers] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredUsers() : []));
+  const [authSession, setAuthSession] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredSession() : null));
   const [initialAuthLoading, setInitialAuthLoading] = useState(hasSupabaseConfig);
   const [theme, setTheme] = useState(loadStoredTheme);
   const [userMode, setUserMode] = useState(() => {
     const savedUser = authUsers.find((user) => user.username === authSession?.username);
 
-    return savedUser?.mode || loadStoredAppMode();
+    return savedUser?.mode || (shouldUseLocalFallbackStorage() ? loadStoredAppMode() : "");
   });
   const [activePage, setActivePage] = useState("dashboard");
-  const [customers, setCustomers] = useState(loadStoredCustomers);
-  const [styles, setStyles] = useState(loadStoredStyles);
+  const [customers, setCustomers] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredCustomers() : []));
+  const [styles, setStyles] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredStyles() : []));
   const [customStyleCategories, setCustomStyleCategories] = useState([]);
-  const [reminders, setReminders] = useState(loadStoredReminders);
-  const [clientResult, setClientResult] = useState(loadStoredClientResult);
-  const [sharedMeasurements, setSharedMeasurements] = useState(loadSharedMeasurements);
+  const [reminders, setReminders] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredReminders() : []));
+  const [clientResult, setClientResult] = useState(() => (shouldUseLocalFallbackStorage() ? loadStoredClientResult() : null));
+  const [sharedMeasurements, setSharedMeasurements] = useState(() => (shouldUseLocalFallbackStorage() ? loadSharedMeasurements() : []));
   const [processedCustomer, setProcessedCustomer] = useState(null);
   const [reviewDraft, setReviewDraft] = useState(null);
-  const [measurementDrafts, setMeasurementDrafts] = useState(loadMeasurementDrafts);
+  const [measurementDrafts, setMeasurementDrafts] = useState(() => (shouldUseLocalFallbackStorage() ? loadMeasurementDrafts() : []));
   const [activeMeasurementDraftId, setActiveMeasurementDraftId] = useState(null);
   const [measurementEntryMode, setMeasurementEntryMode] = useState(null);
   const [deleteAction, setDeleteAction] = useState(null);
@@ -7180,38 +7283,74 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredUsers(authUsers);
   }, [authUsers]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredSession(authSession);
   }, [authSession]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredAppMode(userMode);
   }, [userMode]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredCustomers(customers);
   }, [customers]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredStyles(styles);
   }, [styles]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredReminders(reminders);
   }, [reminders]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveStoredClientResult(clientResult);
   }, [clientResult]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     saveSharedMeasurements(sharedMeasurements);
   }, [sharedMeasurements]);
 
   useEffect(() => {
+    if (!shouldUseLocalFallbackStorage()) {
+      return;
+    }
+
     if (measurementDrafts.length > 0) {
       saveMeasurementDrafts(measurementDrafts);
     } else {
@@ -7867,7 +8006,7 @@ function App() {
         wasOfflineRef.current = true;
       }
 
-      if (!saveMeasurementDrafts(nextDrafts)) {
+      if (shouldUseLocalFallbackStorage() && !saveMeasurementDrafts(nextDrafts)) {
         showCloudStatus("error", "Draft could not be saved on this device. Delete older drafts and try again.");
       }
 
@@ -7895,7 +8034,7 @@ function App() {
         ? currentDrafts.map((currentDraft) => (currentDraft.id === draftId ? draftForStorage : currentDraft))
         : [draftForStorage, ...currentDrafts];
 
-      if (!saveMeasurementDrafts(nextDrafts)) {
+      if (shouldUseLocalFallbackStorage() && !saveMeasurementDrafts(nextDrafts)) {
         showCloudStatus("error", "Draft could not be saved on this device. Retake photos or delete older drafts.");
       }
 
@@ -8704,6 +8843,16 @@ function App() {
       />
     </div>
   );
+}
+
+function App() {
+  const sharedStyleToken = getSharedStyleTokenFromPath();
+
+  if (sharedStyleToken) {
+    return <SharedStyleCategoryPage token={sharedStyleToken} />;
+  }
+
+  return <AuthenticatedApp />;
 }
 
 export default App;

@@ -3,6 +3,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Buffer } from "buffer";
 
 const STYLE_IMAGE_BUCKET = "style-images";
+const DEFAULT_WEB_APP_URL = "https://tailor-iq.netlify.app";
 
 function isMissingAttachmentTableError(error) {
   const message = `${error?.code || ""} ${error?.message || ""}`.toLowerCase();
@@ -26,6 +27,21 @@ function isMissingStyleCategoryTableError(error) {
 
 function getMode(user) {
   return user?.mode || "client";
+}
+
+function createShareToken() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function normalizePublicBaseUrl() {
+  const configuredUrl = process.env.EXPO_PUBLIC_WEB_APP_URL?.trim();
+  const baseUrl = configuredUrl || DEFAULT_WEB_APP_URL;
+
+  return baseUrl.replace(/\/+$/, "");
+}
+
+export function buildStyleCategoryShareUrl(token) {
+  return `${normalizePublicBaseUrl()}/shared/styles/${token}`;
 }
 
 function getImageExtension(image) {
@@ -302,6 +318,51 @@ export async function saveMobileStyleCategory({ user, name }) {
   }
 
   return { ok: true, category: cleanName };
+}
+
+export async function createMobileStyleCategoryShare({ user, category }) {
+  if (!supabase || !user?.id) {
+    return { ok: false, message: getSupabaseConfigError() };
+  }
+
+  const cleanCategory = category?.trim();
+
+  if (!cleanCategory || cleanCategory === "all") {
+    return { ok: false, message: "Choose a style category before sharing." };
+  }
+
+  const token = createShareToken();
+  const payload = {
+    user_id: user.id,
+    mode: getMode(user),
+    category: cleanCategory,
+    token,
+    tailor_name: user.fullName || user.username || null,
+    tailor_username: user.username || null,
+    is_active: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("style_category_shares")
+    .upsert(payload, {
+      onConflict: "user_id,mode,category",
+    })
+    .select("token, category")
+    .single();
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  const shareToken = data?.token || token;
+
+  return {
+    ok: true,
+    token: shareToken,
+    category: data?.category || cleanCategory,
+    url: buildStyleCategoryShareUrl(shareToken),
+  };
 }
 
 export async function attachMobileStyleToCustomer({ user, style, customer, note = "" }) {

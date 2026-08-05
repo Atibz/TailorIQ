@@ -6,7 +6,6 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -16,6 +15,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useColorScheme,
   Vibration,
   View,
 } from "react-native";
@@ -26,25 +26,11 @@ import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import {
   ArrowLeft,
-  Bell,
   BookOpen,
   Camera,
   ChevronRight,
-  ClipboardList,
-  Edit3,
-  FileText,
-  Home,
-  Image as ImageIcon,
-  ListChecks,
-  MoreHorizontal,
-  Moon,
-  Palette,
-  Plus,
   Ruler,
-  Save,
   ScanText,
-  Shirt,
-  Sun,
   Trash2,
   Upload,
   User,
@@ -52,11 +38,59 @@ import {
 } from "lucide-react-native";
 
 import { buildMeasurementList, getProfileFields, roundMeasurement } from "./src/constants/measurementFields";
+import {
+  canUsePlanFeature,
+  getUpgradeMessage,
+  getRecordLimit,
+  getUserPlan,
+  selfCaptureSetupSteps,
+  styleCategories,
+} from "./src/constants/appConfig";
+import { IconGlyph, PhotoSourceTile, RecordActionButton } from "./src/components/ActionTiles";
+import { AppHeader, AppShell, BrandMark, OfflineNotice } from "./src/components/AppLayout";
+import { ConfirmationModal } from "./src/components/ConfirmationModal";
+import { PlanUsageMeter } from "./src/components/PlanUsageMeter";
+import { DraftsScreen } from "./src/screens/DraftsScreen";
+import { HomeScreen, ModeScreen, PasswordResetScreen } from "./src/screens/MainScreens";
+import { MoreScreen } from "./src/screens/MoreScreen";
+import { PlansScreen } from "./src/screens/PlansScreen";
+import { ProfileScreen } from "./src/screens/ProfileScreen";
+import { ReminderFormScreen, ReminderListScreen, RemindersHomeScreen } from "./src/screens/RemindersScreens";
+import { AboutScreen, HelpScreen, PrivacyScreen } from "./src/screens/StaticInfoScreens";
+import { StyleDetailScreen, StyleFormScreen, StyleGalleryScreen, StylesHomeScreen } from "./src/screens/StylesScreens";
+import { palette } from "./src/theme";
+import {
+  buildManualMeasurementList,
+  cmToInches,
+  findGuideMark,
+  fromDisplayMeasurementValue,
+  getMeasurementSummary,
+  groupMeasurements,
+  isVisibleMeasurement,
+  toDisplayMeasurementValue,
+} from "./src/utils/measurementDisplay";
+import {
+  findReminderCustomerMatch,
+  formatShortDate,
+  getRecordCustomerName,
+  getRecordInitials,
+  hasPhotoReference,
+  hasUsablePhoto,
+  mergeStyleCategories,
+} from "./src/utils/customerRecords";
+import {
+  cleanPhotoMessage,
+  cleanPhotoWarnings,
+  getCameraVoiceInstruction,
+  getLiveCaptureResult,
+  getLiveCaptureVoiceInstruction,
+} from "./src/utils/captureFeedback";
 import { validateCapturedPhoto } from "./src/services/captureValidationApi";
 import { requestMobileMeasurements } from "./src/services/measurementApi";
 import { deleteMobileReminder, fetchMobileReminders, saveMobileReminder } from "./src/services/reminderApi";
 import {
   attachMobileStyleToCustomer,
+  createMobileStyleCategoryShare,
   deleteMobileStyle,
   detachMobileStyleFromCustomer,
   fetchMobileStyleCategories,
@@ -89,18 +123,6 @@ const captureStandingGuide = require("./assets/capture-standing-guide.png");
 const captureFemaleStandingGuide = require("./assets/capture-guide-female-standing.png");
 const authBackgroundImage = require("./assets/auth-background.png");
 
-const palette = {
-  amber: "#FF9F00",
-  amberDark: "#C46F00",
-  black: "#080807",
-  charcoal: "#14120E",
-  cream: "#FFF9EA",
-  panel: "#FFFDF6",
-  softGold: "#FFF2C9",
-  muted: "#776B58",
-  line: "#E8D8AD",
-};
-
 const amber = palette.amber;
 const black = palette.black;
 const softGold = palette.softGold;
@@ -108,266 +130,9 @@ const GOOGLE_AUTH_REDIRECT_URL = "tailoriq://auth/callback";
 const APP_THEME_STORAGE_KEY = "tailoriq_mobile_theme";
 const isRunningInExpoGo = Constants.appOwnership === "expo";
 let activeLightMode = false;
-const subscriptionPlans = {
-  free: {
-    id: "free",
-    label: "Free",
-    customerLimit: 10,
-    styleLimit: 10,
-    paidFeatures: {
-      reminders: false,
-      ocrImport: false,
-      customShorthand: false,
-      customStyleCategories: false,
-      styleAttachments: false,
-    },
-  },
-  pro: {
-    id: "pro",
-    label: "Pro",
-    customerLimit: Infinity,
-    styleLimit: Infinity,
-    paidFeatures: {
-      reminders: true,
-      ocrImport: true,
-      customShorthand: true,
-      customStyleCategories: true,
-      styleAttachments: true,
-    },
-  },
-};
 
-function getUserPlan(user) {
-  return subscriptionPlans[user?.plan === "pro" ? "pro" : "free"];
-}
-
-function canUsePlanFeature(user, featureKey) {
-  return Boolean(getUserPlan(user).paidFeatures[featureKey]);
-}
-
-function getUpgradeMessage(featureName) {
-  return `${featureName} is a Pro feature. Measurement capture, review, saved records, and sharing stay free.`;
-}
-
-const featureToneStyles = {
-  amber: {
-    badge: { backgroundColor: palette.amber },
-    text: { color: palette.black },
-  },
-  teal: {
-    badge: { backgroundColor: "#0F766E" },
-    text: { color: "#ffffff" },
-  },
-  blue: {
-    badge: { backgroundColor: "#2563EB" },
-    text: { color: "#ffffff" },
-  },
-  rose: {
-    badge: { backgroundColor: "#BE123C" },
-    text: { color: "#ffffff" },
-  },
-  slate: {
-    badge: { backgroundColor: "#15120b" },
-    text: { color: "#ffffff" },
-  },
-  violet: {
-    badge: { backgroundColor: "#7C3AED" },
-    text: { color: "#ffffff" },
-  },
-};
-const styleCategories = [
-  "Gown",
-  "Blouse",
-  "Skirt",
-  "Trouser",
-  "Native wear",
-  "Suit",
-  "Agbada",
-  "Casual",
-  "Bridal",
-  "Other",
-];
-
-const resultGuideDefinitions = {
-  male: [
-    { key: "neck", marker: "circumference", label: "Neck", instruction: "Neck is measured around the base of the neck where the collar sits.", type: "horizontal", x1: 43, x2: 57, y: 45 },
-    { key: "chest", marker: "circumference", label: "Chest", instruction: "Chest is measured around the fullest chest, with the tape level across the back.", type: "horizontal", x1: 29, x2: 71, y: 65 },
-    { key: "stomach", marker: "circumference", label: "Stomach", instruction: "Stomach is measured around the belly line, usually slightly above the trouser waist.", type: "horizontal", x1: 35, x2: 65, y: 86 },
-    { key: "shoulder", marker: "width", label: "Shoulder", instruction: "Shoulder is measured across the back from one shoulder point to the other.", type: "horizontal", x1: 28, x2: 72, y: 48 },
-    { key: "armhole", label: "Armhole", instruction: "Armhole is measured around the arm opening from shoulder, underarm, and back up.", type: "curve", cx: 28, cy: 63 },
-    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", type: "diagonal", x1: 29, y1: 49, x2: 22, y2: 109 },
-    { key: "bicep", marker: "circumference", label: "Round sleeve", instruction: "Round sleeve is measured around the fullest part of the upper arm.", type: "horizontal", x1: 21, x2: 31, y: 78 },
-    { key: "wrist", marker: "circumference", label: "Cuff / wrist", instruction: "Cuff or wrist is measured around the wrist or desired cuff opening.", type: "horizontal", x1: 21, x2: 29, y: 108 },
-    { key: "topLength", label: "Top length", instruction: "Top length is measured from the shoulder near the neck down to the hip or seat line.", type: "vertical", x: 73, y1: 46, y2: 116 },
-    { key: "waist", marker: "circumference", label: "Waist", instruction: "Waist is measured around the waistband position where the trouser will sit.", type: "horizontal", x1: 33, x2: 67, y: 104 },
-    { key: "seat", marker: "circumference", label: "Seat", instruction: "Seat is measured around the fullest part of the hip or seat.", type: "horizontal", x1: 31, x2: 69, y: 116 },
-    { key: "trouserLength", label: "Outseam", instruction: "Outseam is measured from the trouser waistband down the outside leg to the ankle.", type: "vertical", x: 72, y1: 104, y2: 190 },
-    { key: "inseam", label: "Inseam", instruction: "Inseam is measured from crotch down the inside leg to the ankle.", type: "vertical", x: 52, y1: 118, y2: 190 },
-    { key: "rise", label: "Rise", instruction: "Rise is measured from waistband down to crotch depth.", type: "vertical", x: 45, y1: 104, y2: 117 },
-    { key: "thigh", marker: "circumference", label: "Thigh", instruction: "Thigh is measured around the fullest part of the upper thigh.", type: "horizontal", x1: 35, x2: 51, y: 128 },
-    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", type: "horizontal", x1: 33, x2: 46, y: 144 },
-    { key: "ankle", marker: "circumference", label: "Bottom / ankle", instruction: "Bottom or ankle is measured at the trouser bottom opening.", type: "horizontal", x1: 32, x2: 42, y: 187 },
-  ],
-  female: [
-    { key: "bust", marker: "circumference", label: "Bust", instruction: "Bust is measured around the fullest bust, with the tape level across the back.", type: "horizontal", x1: 32, x2: 68, y: 69 },
-    { key: "underbust", marker: "circumference", label: "Underbust", instruction: "Underbust is measured around the ribcage directly below the bust.", type: "horizontal", x1: 34, x2: 66, y: 76 },
-    { key: "waist", marker: "circumference", label: "Waist", instruction: "Waist is measured around the natural waist, the narrowest part of the torso.", type: "horizontal", x1: 36, x2: 64, y: 90 },
-    { key: "shoulder", marker: "width", label: "Shoulder", instruction: "Shoulder is measured across the back from one shoulder point to the other.", type: "horizontal", x1: 31, x2: 69, y: 49 },
-    { key: "bustPoint", label: "Bust point", instruction: "Bust point is measured from shoulder near the neck down to the bust apex.", type: "vertical", x: 43, y1: 49, y2: 68 },
-    { key: "bustSpan", marker: "width", label: "Bust span", instruction: "Bust span is measured from one bust apex to the other.", type: "horizontal", x1: 41, x2: 59, y: 68 },
-    { key: "frontLength", label: "Front bodice length", instruction: "Front bodice length is measured from shoulder through bust point down to the waist.", type: "vertical", x: 70, y1: 49, y2: 90 },
-    { key: "backLength", label: "Back bodice length", instruction: "Back bodice length is measured from back neck down to the natural waist.", type: "vertical", x: 33, y1: 47, y2: 90 },
-    { key: "armhole", label: "Armhole", instruction: "Armhole is measured around the arm opening from shoulder, underarm, and back up.", type: "curve", cx: 30, cy: 65 },
-    { key: "sleeve", label: "Sleeve length", instruction: "Sleeve length is measured from the shoulder point where the sleeve seam starts down to the wrist.", type: "diagonal", x1: 31, y1: 51, x2: 20, y2: 108 },
-    { key: "bicep", marker: "circumference", label: "Round sleeve", instruction: "Round sleeve is measured around the fullest part of the upper arm.", type: "horizontal", x1: 20, x2: 31, y: 79 },
-    { key: "topLength", label: "Blouse/top length", instruction: "Blouse or top length is measured from shoulder down to the high hip line.", type: "vertical", x: 72, y1: 49, y2: 105 },
-    { key: "waistLower", marker: "circumference", label: "Waist band", instruction: "Waist band is measured around the chosen skirt, trouser, or gown waistband line, usually just below the navel.", type: "horizontal", x1: 35, x2: 65, y: 98 },
-    { key: "highHip", marker: "circumference", label: "High hip", instruction: "High hip is measured around the upper hip right below the waistband.", type: "horizontal", x1: 34, x2: 66, y: 105 },
-    { key: "hip", marker: "circumference", label: "Full hip", instruction: "Full hip is measured around the broadest point of the hip just below the high hip.", type: "horizontal", x1: 31, x2: 69, y: 116 },
-    { key: "waistToHip", label: "Waist to hip", instruction: "Waist to hip is the vertical drop from the natural waist down to the high hip line.", type: "vertical", x: 38, y1: 90, y2: 105 },
-    { key: "lowerLength", label: "Skirt/trouser length", instruction: "Skirt or trouser length is measured from the natural waist down to the ankle.", type: "vertical", x: 72, y1: 90, y2: 191 },
-    { key: "rise", label: "Rise", instruction: "Rise is measured from the natural waist down to crotch depth for trousers.", type: "vertical", x: 50, y1: 90, y2: 121 },
-    { key: "inseam", label: "Inseam", instruction: "Inseam is measured from crotch down the inside leg to the ankle.", type: "vertical", x: 52, y1: 121, y2: 191 },
-    { key: "thigh", marker: "circumference", label: "Thigh", instruction: "Thigh is measured around the fullest part of the upper thigh.", type: "horizontal", x1: 35, x2: 51, y: 128 },
-    { key: "knee", marker: "circumference", label: "Knee", instruction: "Knee is measured around the knee joint.", type: "horizontal", x1: 34, x2: 46, y: 143 },
-    { key: "ankle", marker: "circumference", label: "Ankle / hem", instruction: "Ankle or hem is measured at the trouser ankle or skirt hem opening.", type: "horizontal", x1: 35, x2: 45, y: 186 },
-  ],
-};
-
-const selfCaptureSetupSteps = [
-  "Place your phone upright on a table.",
-  "Support it with books or an open laptop so it stays steady.",
-  "Step back slowly until your whole body fits inside the guide.",
-  "Wear fitted clothes and stand straight with arms slightly away from the body.",
-];
-
-function getCameraVoiceInstruction({ captureMode, captureStep, captureRetryPaused }) {
-  if (captureRetryPaused) {
-    return "Adjust the phone, make sure your full body is visible, then tap retry.";
-  }
-
-  if (captureMode === "self") {
-    return captureStep === "front"
-      ? "Front view. Step back until your whole body is visible. Stand straight with your arms slightly away from your body."
-      : "Side view. Turn fully to your side. Keep your full body visible and your arms slightly away from your body.";
-  }
-
-  return captureStep === "front"
-    ? "Frame the full front view from head to feet, then take the photo."
-    : "Frame the full side view from head to feet, then take the photo.";
-}
-
-function getLiveCaptureVoiceInstruction(message = "") {
-  const normalizedMessage = message.toLowerCase();
-
-  if (normalizedMessage.includes("not centered")) {
-    return "Move your body toward the middle of the frame.";
-  }
-
-  if (normalizedMessage.includes("too close") || normalizedMessage.includes("frame edge")) {
-    return "Step back until your full body fits comfortably.";
-  }
-
-  if (normalizedMessage.includes("too small")) {
-    return "Move slightly closer, but keep your head and feet visible.";
-  }
-
-  if (normalizedMessage.includes("front-facing")) {
-    return "Face the camera straight on.";
-  }
-
-  if (normalizedMessage.includes("side-facing") || normalizedMessage.includes("turn sideways")) {
-    return "Turn sideways so one shoulder faces the camera.";
-  }
-
-  if (normalizedMessage.includes("arms") || normalizedMessage.includes("waist")) {
-    return "Let your arms hang slightly away from your body.";
-  }
-
-  if (normalizedMessage.includes("stand straight") || normalizedMessage.includes("twisted")) {
-    return "Stand straight without twisting your shoulders or hips.";
-  }
-
-  if (normalizedMessage.includes("too dark")) {
-    return "Use brighter even lighting.";
-  }
-
-  if (normalizedMessage.includes("overexposed")) {
-    return "Reduce harsh light on the body.";
-  }
-
-  if (normalizedMessage.includes("blurry")) {
-    return "Hold the camera steady.";
-  }
-
-  return "Adjust the camera until your full body is clear.";
-}
-
-function isNoisyPhotoWarning(message = "") {
-  const normalizedMessage = message.toLowerCase();
-
-  return (
-    normalizedMessage.includes("close to the frame edge") ||
-    normalizedMessage.includes("near the frame edge") ||
-    normalizedMessage.includes("move back only if") ||
-    normalizedMessage.includes("very close to the frame edge") ||
-    normalizedMessage.includes("person is too close to the camera") ||
-    normalizedMessage.includes("fills almost the whole photo") ||
-    normalizedMessage.includes("keep a little space around the head and feet") ||
-    normalizedMessage.includes("outline looks wide") ||
-    normalizedMessage.includes("continue only if the full body is visible") ||
-    normalizedMessage.includes("looks too close or too wide") ||
-    normalizedMessage.includes("step back and keep the full body visible") ||
-    normalizedMessage.includes("does not look fully side-facing") ||
-    normalizedMessage.includes("turn sideways so one shoulder and one hip face the camera") ||
-    normalizedMessage.includes("missing some body details")
-  );
-}
-
-function cleanPhotoWarnings(warnings = []) {
-  return warnings.filter((warning) => !isNoisyPhotoWarning(warning));
-}
-
-function cleanPhotoMessage(message = "") {
-  return isNoisyPhotoWarning(message) ? "" : message;
-}
-
-function isBlockingCaptureWarning(message = "") {
-  const normalizedMessage = message.toLowerCase();
-
-  return (
-    normalizedMessage.includes("too dark") ||
-    normalizedMessage.includes("overexposed") ||
-    normalizedMessage.includes("low contrast") ||
-    normalizedMessage.includes("blurry") ||
-    normalizedMessage.includes("not centered") ||
-    normalizedMessage.includes("too small") ||
-    normalizedMessage.includes("full-body check") ||
-    normalizedMessage.includes("could not be checked") ||
-    normalizedMessage.includes("plain background")
-  );
-}
-
-function getLiveCaptureResult(validation, view) {
-  const visibleWarnings = cleanPhotoWarnings(validation?.warnings || []);
-  const blockingWarning = [
-    validation?.message,
-    ...visibleWarnings,
-  ].find((message) => isBlockingCaptureWarning(message));
-
-  if (!validation?.ok || blockingWarning) {
-    return {
-      ready: false,
-      message: cleanPhotoMessage(blockingWarning || validation?.message) || `Adjust the ${view === "front" ? "front" : "side"} frame.`,
-      warnings: visibleWarnings,
-    };
-  }
-
-  return {
-    ready: true,
-    message: `${view === "front" ? "Front" : "Side"} view is ready.`,
-    warnings: visibleWarnings,
-  };
+function createLocalDraftId() {
+  return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function buildPhotoReadyCheck(view, message = "Photo ready for analysis.") {
@@ -380,198 +145,6 @@ function buildPhotoReadyCheck(view, message = "Photo ready for analysis.") {
     metrics: null,
     checkedAt: new Date().toISOString(),
   };
-}
-
-function BrandMark({ compact = false, light = false }) {
-  return (
-    <View style={styles.brandRow}>
-      <View style={[styles.logoBadge, compact && styles.logoBadgeCompact]}>
-        <Text style={[styles.logoBadgeText, compact && styles.logoBadgeTextCompact]}>IQ</Text>
-      </View>
-      <View>
-        <Text style={[styles.brandName, compact && styles.brandNameCompact, (activeLightMode || light) && styles.brandNameLight]}>
-          Tailor<Text style={styles.brandAccent}>IQ</Text>
-        </Text>
-        <Text style={[styles.brandTagline, compact && styles.brandTaglineCompact, (activeLightMode || light) && styles.brandTaglineLight]}>
-          Measure smart. Fit perfect.
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function IconGlyph({ Icon, color = "#15120b", size = 20, strokeWidth = 2.5, style }) {
-  if (!Icon) {
-    return null;
-  }
-
-  return <Icon color={color} size={size} strokeWidth={strokeWidth} style={style} />;
-}
-
-function AppHeader({ title, subtitle, onBack }) {
-  return (
-    <View style={styles.appHeader}>
-      <View style={styles.appHeaderTop}>
-        {onBack ? (
-          <Pressable onPress={onBack} style={({ pressed }) => [styles.headerBackButton, activeLightMode && styles.headerBackButtonLight, pressed && styles.pressed]}>
-            <ArrowLeft color={activeLightMode ? "#15120b" : "#ffffff"} size={22} strokeWidth={2.8} />
-          </Pressable>
-        ) : (
-          <BrandMark compact />
-        )}
-      </View>
-      <Text style={[styles.pageTitle, activeLightMode && styles.pageTitleLight]}>{title}</Text>
-      {subtitle ? <Text style={[styles.pageSubtitle, activeLightMode && styles.pageSubtitleLight]}>{subtitle}</Text> : null}
-    </View>
-  );
-}
-
-function BottomNav({ active, onNavigate }) {
-  const items = [
-    { id: "home", label: "Home", icon: Home },
-    { id: "measure", label: "Measure", icon: Plus },
-    { id: "records", label: "Records", icon: ClipboardList },
-    { id: "more", label: "More", icon: MoreHorizontal },
-  ];
-
-  return (
-    <View style={styles.bottomNavWrap}>
-      <View style={[styles.bottomNav, activeLightMode && styles.bottomNavLight]}>
-        {items.map((item) => (
-          <Pressable
-            key={item.id}
-            onPress={() => onNavigate(item.id)}
-            style={[styles.navItem, active === item.id && styles.navItemActive]}
-          >
-            <IconGlyph
-              Icon={item.icon}
-              color={active === item.id ? palette.black : activeLightMode ? "#6f6759" : "#D8C9A8"}
-              size={20}
-              strokeWidth={2.7}
-            />
-            <Text style={[
-              styles.navLabel,
-              activeLightMode && styles.navLabelLight,
-              active === item.id && styles.navLabelActive,
-            ]}
-            >
-              {item.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function AppShell({ children, active = "home", onNavigate }) {
-  return (
-    <SafeAreaView style={[styles.screen, activeLightMode && styles.screenLight]}>
-      <StatusBar barStyle={activeLightMode ? "dark-content" : "light-content"} />
-      <View style={styles.shellBody}>{children}</View>
-      {onNavigate ? <BottomNav active={active} onNavigate={onNavigate} /> : null}
-    </SafeAreaView>
-  );
-}
-
-function AppearanceToggle({ isLightMode, onToggle, compact = false }) {
-  return (
-    <Pressable
-      onPress={onToggle}
-      style={({ pressed }) => [
-        styles.appearanceButton,
-        compact && styles.appearanceButtonCompact,
-        isLightMode && styles.appearanceButtonLight,
-        pressed && styles.pressed,
-      ]}
-    >
-      {isLightMode ? (
-        <Moon color="#15120b" size={15} strokeWidth={2.7} />
-      ) : (
-        <Sun color="#ffffff" size={15} strokeWidth={2.7} />
-      )}
-      <Text style={[styles.appearanceButtonText, isLightMode && styles.appearanceButtonTextLight]}>
-        {isLightMode ? "Dark" : "Light"}
-      </Text>
-    </Pressable>
-  );
-}
-
-function OfflineNotice({ message }) {
-  if (!message) {
-    return null;
-  }
-
-  return <Text style={styles.offlineNotice}>{message}</Text>;
-}
-
-function FeatureTile({ title, text, icon, onPress, tone = "slate" }) {
-  const toneStyle = featureToneStyles[tone] || featureToneStyles.slate;
-  const Icon = icon;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionTile,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.actionIconBadge, toneStyle.badge]}>
-        {typeof Icon === "function" ? (
-          <IconGlyph Icon={Icon} color={toneStyle.icon || toneStyle.text?.color || "#15120b"} size={22} />
-        ) : (
-          <Text style={[styles.actionIcon, toneStyle.text]}>{icon}</Text>
-        )}
-      </View>
-      <Text style={styles.actionTitle}>{title}</Text>
-      <Text style={styles.actionText}>{text}</Text>
-    </Pressable>
-  );
-}
-
-function PhotoSourceTile({ title, text, icon, onPress, tone = "slate", primary = false }) {
-  const toneStyle = featureToneStyles[tone] || featureToneStyles.slate;
-  const Icon = icon;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.photoSourceTile,
-        primary && styles.photoSourceTilePrimary,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.photoSourceIconBadge, toneStyle.badge]}>
-        {typeof Icon === "function" ? (
-          <IconGlyph Icon={Icon} color={toneStyle.icon || toneStyle.text?.color || "#15120b"} size={24} />
-        ) : (
-          <Text style={[styles.photoSourceIcon, toneStyle.text]}>{icon}</Text>
-        )}
-      </View>
-      <View style={styles.photoSourceBody}>
-        <Text style={styles.photoSourceTitle}>{title}</Text>
-        <Text style={styles.photoSourceText}>{text}</Text>
-      </View>
-      <ChevronRight color={palette.amberDark} size={22} strokeWidth={2.8} />
-    </Pressable>
-  );
-}
-
-function RecordActionButton({ label, Icon, onPress, danger = false }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        danger ? styles.recordDeleteButton : styles.recordViewButton,
-        pressed && (danger ? styles.recordDeleteButtonPressed : styles.pressed),
-      ]}
-    >
-      <IconGlyph Icon={Icon} color={danger ? "#C83434" : "#ffffff"} size={15} strokeWidth={2.7} />
-      <Text style={danger ? styles.recordDeleteText : styles.recordViewText}>{label}</Text>
-    </Pressable>
-  );
 }
 
 function normalizeUsername(value) {
@@ -630,230 +203,6 @@ function getHeightPlaceholder(unit = "cm") {
   }
 
   return "Height in cm";
-}
-
-function buildManualMeasurementList(profileId, values = {}) {
-  return getProfileFields(profileId).map((field) => ({
-    fieldKey: field.key,
-    valueKey: field.valueKey,
-    label: field.label,
-    valueCm: values[field.valueKey] || "",
-    note: field.note,
-    group: field.group,
-  }));
-}
-
-function groupMeasurements(measurements = []) {
-  return measurements.filter(isVisibleMeasurement).reduce((groups, measurement) => {
-    const groupName = measurement.group || "Measurements";
-    const existingGroup = groups.find((group) => group.title === groupName);
-
-    if (existingGroup) {
-      existingGroup.items.push(measurement);
-      return groups;
-    }
-
-    return [...groups, { title: groupName, items: [measurement] }];
-  }, []);
-}
-
-function getMeasurementSummary(measurements = []) {
-  const visibleMeasurements = measurements.filter(isVisibleMeasurement);
-  const filledMeasurements = visibleMeasurements.filter((measurement) => Number(measurement?.valueCm) > 0);
-
-  return {
-    total: visibleMeasurements.length,
-    filled: filledMeasurements.length,
-  };
-}
-
-function formatShortDate(value) {
-  if (!value) {
-    return "Today";
-  }
-
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function getRecordCustomerName(record = {}) {
-  if (!record) {
-    return "";
-  }
-
-  return (
-    record.fullname ||
-    record.customerName ||
-    record.measurementDetails?.customerName ||
-    ""
-  ).trim();
-}
-
-function getReminderCustomerSuggestions(records = [], searchTerm = "") {
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-  const seenNames = new Set();
-
-  if (!normalizedSearch) {
-    return [];
-  }
-
-  const matches = records
-    .map((record) => {
-      const name = getRecordCustomerName(record);
-
-      return {
-        id: record.cloudMeasurementId || record.cloudCustomerId || record.id || name,
-        cloudCustomerId: record.cloudCustomerId || "",
-        name,
-        profile: record.measurementProfile === "female" ? "Female" : "Male",
-        updatedAt: record.updatedAt || record.createdAt,
-      };
-    })
-    .filter((record) => {
-      if (!record.name) {
-        return false;
-      }
-
-      const normalizedName = record.name.toLowerCase();
-
-      if (seenNames.has(normalizedName)) {
-        return false;
-      }
-
-      seenNames.add(normalizedName);
-      return !normalizedSearch || normalizedName.includes(normalizedSearch);
-    })
-    .slice(0, 5);
-
-  if (
-    normalizedSearch &&
-    matches.length === 1 &&
-    matches[0].name.toLowerCase() === normalizedSearch
-  ) {
-    return [];
-  }
-
-  return matches;
-}
-
-function findReminderCustomerMatch(records = [], customerName = "") {
-  const normalizedName = customerName.trim().toLowerCase();
-
-  if (!normalizedName) {
-    return null;
-  }
-
-  return records.find((record) => getRecordCustomerName(record).toLowerCase() === normalizedName) || null;
-}
-
-function getStyleCustomerSuggestions(records = [], searchTerm = "", attachedCustomers = []) {
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-  const attachedIds = new Set(attachedCustomers.map((customer) => String(customer.cloudCustomerId || customer.customerId)));
-
-  if (!normalizedSearch) {
-    return [];
-  }
-
-  return records
-    .map((record) => {
-      const name = getRecordCustomerName(record);
-
-      return {
-        id: record.cloudCustomerId || record.id || name,
-        cloudCustomerId: record.cloudCustomerId || "",
-        name,
-        profile: record.measurementProfile === "female" ? "Female" : "Male",
-        updatedAt: record.updatedAt || record.createdAt,
-      };
-    })
-    .filter((record) => (
-      record.name &&
-      record.cloudCustomerId &&
-      !attachedIds.has(String(record.cloudCustomerId)) &&
-      (!normalizedSearch || record.name.toLowerCase().includes(normalizedSearch))
-    ))
-    .slice(0, 6);
-}
-
-function mergeStyleCategories(customCategories = []) {
-  return [...styleCategories, ...customCategories].reduce((list, category) => {
-    const cleanCategory = category?.trim();
-
-    if (!cleanCategory || list.some((item) => item.toLowerCase() === cleanCategory.toLowerCase())) {
-      return list;
-    }
-
-    return [...list, cleanCategory];
-  }, []);
-}
-
-function getRecordInitials(name = "") {
-  const cleanName = name.trim();
-
-  if (!cleanName) {
-    return "IQ";
-  }
-
-  return cleanName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-}
-
-function hasUsablePhoto(photo) {
-  return Boolean(photo?.uri);
-}
-
-function hasPhotoReference(photo) {
-  return Boolean(photo?.uri || photo?.hasPhoto);
-}
-
-function cmToInches(value) {
-  return Math.round((Number(value) / 2.54) * 4) / 4;
-}
-
-function toDisplayMeasurementValue(valueCm, unit) {
-  const numericValue = Number(valueCm);
-
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return "";
-  }
-
-  return unit === "in" ? String(cmToInches(numericValue)) : String(roundMeasurement(numericValue));
-}
-
-function fromDisplayMeasurementValue(value, unit) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return "";
-  }
-
-  return unit === "in" ? roundMeasurement(numericValue * 2.54) : roundMeasurement(numericValue);
-}
-
-function getGuideKeyForMeasurement(profileId, measurement = {}) {
-  if (profileId === "female" && (measurement.valueKey === "waistBand" || measurement.label === "Waist band")) {
-    return "waistLower";
-  }
-
-  return measurement.valueKey || measurement.fieldKey;
-}
-
-function findGuideMark(profileId, measurement) {
-  const guideKey = getGuideKeyForMeasurement(profileId, measurement);
-  const guide = resultGuideDefinitions[profileId] || resultGuideDefinitions.male;
-
-  return guide.find((mark) => mark.key === guideKey) || null;
-}
-
-function isVisibleMeasurement(measurement = {}) {
-  return measurement.fieldKey !== "acrossBack" && measurement.valueKey !== "acrossBack";
 }
 
 function isPositiveStatus(message = "") {
@@ -1391,15 +740,6 @@ function convertInputValueToCm(value, usesInches) {
   return roundMeasurement(usesInches ? numericValue * 2.54 : numericValue);
 }
 
-function formatReminderDateTime(reminder) {
-  if (!reminder?.dueAt) {
-    return "No due time";
-  }
-
-  const dueDate = new Date(reminder.dueAt);
-  return `${dueDate.toLocaleDateString()} ${dueDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-}
-
 function toDateInputValue(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -1530,6 +870,7 @@ async function canReachSupabase() {
 }
 
 export default function App() {
+  const deviceColorScheme = useColorScheme();
   const [screen, setScreen] = useState("auth");
   const [authMode, setAuthMode] = useState("login");
   const [showAuthForm, setShowAuthForm] = useState(false);
@@ -1537,7 +878,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [offlineMessage, setOfflineMessage] = useState("");
-  const [isLightMode, setIsLightMode] = useState(false);
+  const [themePreference, setThemePreference] = useState("system");
   const [profile, setProfile] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [resetPassword, setResetPassword] = useState("");
@@ -1602,6 +943,7 @@ export default function App() {
   const [reminderToDelete, setReminderToDelete] = useState(null);
   const [editingReminderId, setEditingReminderId] = useState(null);
   const [savedMeasurementReminderPrompt, setSavedMeasurementReminderPrompt] = useState(null);
+  const [upgradePrompt, setUpgradePrompt] = useState(null);
   const [reminderForm, setReminderForm] = useState({
     cloudCustomerId: "",
     customerName: "",
@@ -1646,6 +988,7 @@ export default function App() {
   const title = useMemo(() => (
     isSignup ? "Create your account" : "Welcome back"
   ), [isSignup]);
+  const isLightMode = themePreference === "system" ? deviceColorScheme !== "dark" : themePreference === "light";
 
   activeLightMode = isLightMode;
 
@@ -1663,8 +1006,8 @@ export default function App() {
     let mounted = true;
 
     AsyncStorage.getItem(APP_THEME_STORAGE_KEY).then((savedTheme) => {
-      if (mounted && savedTheme) {
-        setIsLightMode(savedTheme === "light");
+      if (mounted && (savedTheme === "light" || savedTheme === "dark")) {
+        setThemePreference(savedTheme);
       }
     }).catch(() => {
       // Theme preference is cosmetic, so failures should not block startup.
@@ -1675,11 +1018,13 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    AsyncStorage.setItem(APP_THEME_STORAGE_KEY, isLightMode ? "light" : "dark").catch(() => {
+  const handleToggleTheme = () => {
+    const nextTheme = isLightMode ? "dark" : "light";
+    setThemePreference(nextTheme);
+    AsyncStorage.setItem(APP_THEME_STORAGE_KEY, nextTheme).catch(() => {
       // Ignore theme persistence failures.
     });
-  }, [isLightMode]);
+  };
 
   useEffect(() => {
     if (profile?.id && profile.mode) {
@@ -2603,6 +1948,29 @@ export default function App() {
     }
   };
 
+  const openReminderUpgradePrompt = () => {
+    setUpgradePrompt({
+      title: "Reminders are Pro",
+      message: "Free keeps measurement capture, review, saved records, styles, and sharing available. Upgrade when you want fitting, pickup, and follow-up reminders.",
+    });
+  };
+
+  const openStyleAttachmentUpgradePrompt = () => {
+    setUpgradePrompt({
+      title: "Style attachment is Pro",
+      message: "Free lets you save style ideas and customer records separately. Upgrade when you want to connect specific styles to specific customers.",
+    });
+  };
+
+  const handleOpenReminders = () => {
+    if (!canUsePlanFeature(profile, "reminders")) {
+      openReminderUpgradePrompt();
+      return;
+    }
+
+    loadReminders({ openScreen: true });
+  };
+
   const loadStyleLibrary = async ({ openScreen = false } = {}) => {
     if (!profile?.id) {
       return;
@@ -2685,8 +2053,16 @@ export default function App() {
 
   const handleStartMeasurement = async () => {
     setStatus("");
+    const plan = getUserPlan(profile);
+
+    if (measurementDrafts.length >= plan.draftLimit) {
+      setStatus(`Free plan keeps up to ${plan.draftLimit} unfinished measurement drafts. Continue or delete an old draft before starting another.`);
+      setScreen("drafts");
+      return;
+    }
+
     setEditingSavedRecord(null);
-    setActiveDraftId(`draft-${Date.now()}`);
+    setActiveDraftId(createLocalDraftId());
     setCaptureStep("front");
     setCaptureMode(profile?.mode === "client" ? "self" : "assisted");
     setMeasurementPhotoSource("camera");
@@ -3211,10 +2587,10 @@ export default function App() {
       return;
     }
 
-    const plan = getUserPlan(profile);
+    const recordLimit = getRecordLimit(profile);
 
-    if (savedRecords.length >= plan.customerLimit) {
-      setStatus(`Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
+    if (savedRecords.length >= recordLimit) {
+      setStatus(`Free plan saves up to ${recordLimit} customer records. Upgrade to Pro when your shop needs more records.`);
       return;
     }
 
@@ -3263,7 +2639,11 @@ export default function App() {
 
     setSavedRecords((currentRecords) => [result.record, ...currentRecords]);
     setStatus("Manual measurement saved.");
-    setSavedMeasurementReminderPrompt(result.record);
+    if (canUsePlanFeature(profile, "reminders")) {
+      setSavedMeasurementReminderPrompt(result.record);
+    } else {
+      setScreen("home");
+    }
   };
 
   const resetReminderForm = () => {
@@ -3570,6 +2950,33 @@ export default function App() {
     setScreen("styleGallery");
   };
 
+  const handleShareStyleCategory = async (category) => {
+    if (!profile?.id) {
+      setStatus("Login again before sharing.");
+      return;
+    }
+
+    const result = await createMobileStyleCategoryShare({
+      user: profile,
+      category,
+    });
+
+    if (!result.ok) {
+      setStatus(result.message);
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: `${profile.fullName || profile.username || "TailorIQ"} shared ${result.category} styles with you:\n${result.url}`,
+        url: result.url,
+      });
+      setStatus("Category link ready to share.");
+    } catch {
+      setStatus(result.url);
+    }
+  };
+
   const handleDeleteStyle = async () => {
     if (!styleToDelete || !profile?.id || saving) {
       return;
@@ -3617,7 +3024,7 @@ export default function App() {
     }
 
     if (!canUsePlanFeature(profile, "styleAttachments")) {
-      setStatus(getUpgradeMessage("Customer-style attachment"));
+      openStyleAttachmentUpgradePrompt();
       return;
     }
 
@@ -3690,10 +3097,10 @@ export default function App() {
       return;
     }
 
-    const plan = getUserPlan(profile);
+    const recordLimit = getRecordLimit(profile);
 
-    if (profile.mode === "tailor" && !editingSavedRecord && savedRecords.length >= plan.customerLimit) {
-      setStatus(`Free plan saves up to ${plan.customerLimit} customer records. Upgrade to Pro when your shop needs more records.`);
+    if (!editingSavedRecord && savedRecords.length >= recordLimit) {
+      setStatus(`Free plan saves up to ${recordLimit} saved record${recordLimit === 1 ? "" : "s"}. Upgrade to Pro when you need more records.`);
       return;
     }
 
@@ -3754,7 +3161,7 @@ export default function App() {
       setScreen("recordDetail");
       return;
     }
-    if (profile.mode === "tailor") {
+    if (profile.mode === "tailor" && canUsePlanFeature(profile, "reminders")) {
       setSavedMeasurementReminderPrompt(result.record);
     }
   };
@@ -3873,295 +3280,139 @@ export default function App() {
   };
 
   const deleteConfirmModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(recordToDelete)}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setRecordToDelete(null)}
-    >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Delete record?</Text>
-          <Text style={styles.confirmText}>
-            This will remove {recordToDelete?.fullname || "this measurement"} from your saved records.
-          </Text>
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => setRecordToDelete(null)}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving}
-              onPress={handleDeleteRecord}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteButtonText}>{saving ? "Deleting..." : "Delete"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      title="Delete record?"
+      message={`This will remove ${recordToDelete?.fullname || "this measurement"} from your saved records.`}
+      confirmLabel={saving ? "Deleting..." : "Delete"}
+      confirmTone="danger"
+      saving={saving}
+      onCancel={() => setRecordToDelete(null)}
+      onConfirm={handleDeleteRecord}
+    />
   );
 
   const draftDeleteModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(draftToDelete)}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setDraftToDelete(null)}
-    >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Delete draft?</Text>
-          <Text style={styles.confirmText}>
-            This will remove {draftToDelete?.measurementDetails?.customerName || "this unfinished measurement"}.
-          </Text>
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => setDraftToDelete(null)}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving}
-              onPress={handleDeleteDraft}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteButtonText}>{saving ? "Deleting..." : "Delete"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      title="Delete draft?"
+      message={`This will remove ${draftToDelete?.measurementDetails?.customerName || "this unfinished measurement"}.`}
+      confirmLabel={saving ? "Deleting..." : "Delete"}
+      confirmTone="danger"
+      saving={saving}
+      onCancel={() => setDraftToDelete(null)}
+      onConfirm={handleDeleteDraft}
+    />
   );
 
   const reminderDeleteModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(reminderToDelete)}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setReminderToDelete(null)}
-    >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Delete reminder?</Text>
-          <Text style={styles.confirmText}>
-            This will remove {reminderToDelete?.title || reminderToDelete?.customerName || "this reminder"}.
-          </Text>
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => setReminderToDelete(null)}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving}
-              onPress={handleDeleteReminder}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteButtonText}>{saving ? "Deleting..." : "Delete"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      title="Delete reminder?"
+      message={`This will remove ${reminderToDelete?.title || reminderToDelete?.customerName || "this reminder"}.`}
+      confirmLabel={saving ? "Deleting..." : "Delete"}
+      confirmTone="danger"
+      saving={saving}
+      onCancel={() => setReminderToDelete(null)}
+      onConfirm={handleDeleteReminder}
+    />
   );
 
   const postSaveReminderModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(savedMeasurementReminderPrompt)}
-      animationType="fade"
-      transparent
-      onRequestClose={skipReminderAfterSave}
-    >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Set a reminder?</Text>
-          <Text style={styles.confirmText}>
-            Measurement saved for {getRecordCustomerName(savedMeasurementReminderPrompt) || "this customer"}.
-            Do you want to add a fitting, pickup, or follow-up reminder now?
-          </Text>
-          <View style={styles.confirmActions}>
-            <Pressable
-              onPress={skipReminderAfterSave}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>No</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => openReminderForSavedMeasurement(savedMeasurementReminderPrompt)}
-              style={({ pressed }) => [styles.primaryModalButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.primaryModalButtonText}>Yes, set reminder</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      title="Set a reminder?"
+      message={`Measurement saved for ${getRecordCustomerName(savedMeasurementReminderPrompt) || "this customer"}. Do you want to add a fitting, pickup, or follow-up reminder now?`}
+      cancelLabel="No"
+      confirmLabel="Yes, set reminder"
+      onCancel={skipReminderAfterSave}
+      onConfirm={() => openReminderForSavedMeasurement(savedMeasurementReminderPrompt)}
+    />
+  );
+
+  const upgradePromptModal = (
+    <ConfirmationModal
+      visible={Boolean(upgradePrompt)}
+      title={upgradePrompt?.title || "Upgrade TailorIQ"}
+      message={upgradePrompt?.message}
+      cancelLabel="Not now"
+      confirmLabel="View plans"
+      onCancel={() => setUpgradePrompt(null)}
+      onConfirm={() => {
+        setUpgradePrompt(null);
+        setStatus("");
+        setScreen("plans");
+      }}
+    />
   );
 
   const styleDeleteModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(styleToDelete)}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setStyleToDelete(null)}
-    >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Delete style?</Text>
-          <Text style={styles.confirmText}>
-            This will remove {styleToDelete?.title || "this saved style"} from your gallery.
-          </Text>
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => setStyleToDelete(null)}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving}
-              onPress={handleDeleteStyle}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteButtonText}>{saving ? "Deleting..." : "Delete"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      title="Delete style?"
+      message={`This will remove ${styleToDelete?.title || "this saved style"} from your gallery.`}
+      confirmLabel={saving ? "Deleting..." : "Delete"}
+      confirmTone="danger"
+      saving={saving}
+      onCancel={() => setStyleToDelete(null)}
+      onConfirm={handleDeleteStyle}
+    />
   );
 
   const accountDeleteModal = (
-    <Modal
+    <ConfirmationModal
       visible={accountDeleteOpen}
-      animationType="fade"
-      transparent
-      onRequestClose={() => {
+      title="Delete account?"
+      message="This permanently removes your profile, saved measurements, drafts, reminders, saved styles, shared measurements, and account login."
+      confirmLabel={saving ? "Deleting..." : "Delete account"}
+      confirmTone="danger"
+      confirmDisabled={accountDeleteText.trim().toUpperCase() !== "DELETE"}
+      saving={saving}
+      onCancel={() => {
         setAccountDeleteOpen(false);
         setAccountDeleteText("");
+        setStatus("");
       }}
+      onConfirm={handleDeleteAccount}
     >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Delete account?</Text>
-          <Text style={styles.confirmText}>
-            This permanently removes your profile, saved measurements, drafts, reminders, saved styles, shared measurements, and account login.
-          </Text>
-          <Text style={styles.confirmText}>Type DELETE to confirm.</Text>
-          <TextInput
-            value={accountDeleteText}
-            onChangeText={setAccountDeleteText}
-            autoCapitalize="characters"
-            placeholder="DELETE"
-            placeholderTextColor="#8c8576"
-            style={styles.input}
-          />
-          {status && profileStatusTarget === "account" ? (
-            <Text style={styles.actionErrorText}>{status}</Text>
-          ) : null}
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => {
-                setAccountDeleteOpen(false);
-                setAccountDeleteText("");
-                setStatus("");
-              }}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving || accountDeleteText.trim().toUpperCase() !== "DELETE"}
-              onPress={handleDeleteAccount}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                (saving || accountDeleteText.trim().toUpperCase() !== "DELETE") && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteButtonText}>{saving ? "Deleting..." : "Delete account"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      <Text style={styles.confirmText}>Type DELETE to confirm.</Text>
+      <TextInput
+        value={accountDeleteText}
+        onChangeText={setAccountDeleteText}
+        autoCapitalize="characters"
+        placeholder="DELETE"
+        placeholderTextColor="#8c8576"
+        style={styles.input}
+      />
+      {status && profileStatusTarget === "account" ? (
+        <Text style={styles.actionErrorText}>{status}</Text>
+      ) : null}
+    </ConfirmationModal>
   );
 
   const sendToTailorModal = (
-    <Modal
+    <ConfirmationModal
       visible={Boolean(shareTargetRecord)}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setShareTargetRecord(null)}
+      title="Send to tailor"
+      message="Enter the tailor's TailorIQ username. Only the reviewed measurement values will be sent."
+      confirmLabel={saving ? "Sending..." : "Send"}
+      saving={saving}
+      onCancel={() => {
+        setShareTargetRecord(null);
+        setTailorUsername("");
+      }}
+      onConfirm={handleSendToTailor}
     >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.confirmPanel}>
-          <Text style={styles.confirmTitle}>Send to tailor</Text>
-          <Text style={styles.confirmText}>
-            Enter the tailor's TailorIQ username. Only the reviewed measurement values will be sent.
-          </Text>
-          <TextInput
-            value={tailorUsername}
-            onChangeText={setTailorUsername}
-            autoCapitalize="none"
-            placeholder="Tailor username"
-            placeholderTextColor="#8c8576"
-            style={styles.input}
-          />
-          {status ? <Text style={styles.modalStatusText}>{status}</Text> : null}
-          <View style={styles.confirmActions}>
-            <Pressable
-              disabled={saving}
-              onPress={() => {
-                setShareTargetRecord(null);
-                setTailorUsername("");
-              }}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              disabled={saving}
-              onPress={handleSendToTailor}
-              style={({ pressed }) => [
-                styles.primarySmallButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primarySmallButtonText}>{saving ? "Sending..." : "Send"}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+      <TextInput
+        value={tailorUsername}
+        onChangeText={setTailorUsername}
+        autoCapitalize="none"
+        placeholder="Tailor username"
+        placeholderTextColor="#8c8576"
+        style={styles.input}
+      />
+      {status ? <Text style={styles.modalStatusText}>{status}</Text> : null}
+    </ConfirmationModal>
   );
 
   if (loading) {
@@ -4177,8 +3428,8 @@ export default function App() {
     const isClientMode = profile?.mode === "client";
 
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title="Choose photo source"
           subtitle={isClientMode ? "Use guided camera capture for your measurement photos." : "Use the camera now or upload clear front and side photos."}
           onBack={() => setScreen("home")}
@@ -4236,8 +3487,8 @@ export default function App() {
 
   if (screen === "selfCaptureSetup") {
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title="Set up your phone"
           subtitle="Use this before the automatic front and side capture starts."
           onBack={() => setScreen("captureChoice")}
@@ -4394,8 +3645,8 @@ export default function App() {
     const isUploadFlow = measurementPhotoSource === "upload";
 
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title={isUploadFlow ? "Upload photos" : "Review capture"}
           subtitle={isUploadFlow
             ? "Choose clear front and side photos, then run analysis."
@@ -4546,8 +3797,8 @@ export default function App() {
 
   if (screen === "manualChoice") {
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title="Manual measurement"
           subtitle="Choose how you want to enter tape measurements."
           onBack={() => setScreen("home")}
@@ -4582,8 +3833,8 @@ export default function App() {
 
   if (screen === "manualInput") {
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title="Manual input"
           subtitle="Enter measurements taken with a tape, then save the customer record."
           onBack={() => setScreen("manualChoice")}
@@ -4777,7 +4028,7 @@ export default function App() {
       <SafeAreaView style={styles.processingScreen}>
         <StatusBar barStyle="light-content" />
         <View style={styles.processingCard}>
-          <BrandMark compact />
+          <BrandMark compact light={isLightMode} />
           <View style={styles.scanRing}>
             <ActivityIndicator color={amber} size="large" />
           </View>
@@ -4814,8 +4065,8 @@ export default function App() {
     };
 
     return (
-      <AppShell active="measure" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="measure" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title={editingSavedRecord ? "Edit measurement" : "Measurement result"}
           subtitle={editingSavedRecord ? "Update the saved values, then save changes." : "Review generated values, correct where needed, then save."}
           onBack={() => setScreen(editingSavedRecord ? "recordDetail" : "reviewPhotos")}
@@ -4966,10 +4217,11 @@ export default function App() {
 
   if (screen === "records") {
     const receivedShares = sharedMeasurements.filter((share) => share.isReceived);
+    const plan = getUserPlan(profile);
 
     return (
-      <AppShell active="records" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="records" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title={profile?.mode === "client" ? "My saved result" : "Saved records"}
           subtitle={profile?.mode === "client"
             ? "Open your latest approved measurements."
@@ -4978,6 +4230,12 @@ export default function App() {
 
         <ScrollView contentContainerStyle={styles.reviewContent}>
           {status ? <Text style={styles.errorText}>{status}</Text> : null}
+          <PlanUsageMeter
+            count={savedRecords.length}
+            isLightMode={isLightMode}
+            label="Saved records"
+            limit={getRecordLimit(profile)}
+          />
 
           {recordsLoading ? (
             <View style={styles.emptyState}>
@@ -5089,8 +4347,8 @@ export default function App() {
       selectedRecord.generatedMeasurements?.[selectedRecordOriginalIndex]?.valueCm || selectedRecordMeasurement?.valueCm;
 
     return (
-      <AppShell active="records" onNavigate={handleNavigate}>
-        <AppHeader
+      <AppShell isLightMode={isLightMode} active="records" onNavigate={handleNavigate}>
+        <AppHeader isLightMode={isLightMode}
           title={selectedRecord.fullname || "Measurement"}
           subtitle={`${selectedRecord.measurementProfile === "female" ? "Female" : "Male"} measurement record`}
           onBack={() => setScreen("records")}
@@ -5216,1289 +4474,349 @@ export default function App() {
   }
 
   if (screen === "drafts") {
+    const plan = getUserPlan(profile);
+
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Unfinished measurements"
-          subtitle="Continue drafts that have not been saved as final records."
-          onBack={() => setScreen("home")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {status ? <Text style={status === "Draft deleted." ? styles.successText : styles.errorText}>{status}</Text> : null}
-
-          {draftsLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={amber} size="large" />
-              <Text style={styles.emptyStateText}>Loading drafts...</Text>
-            </View>
-          ) : measurementDrafts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>No drafts right now</Text>
-              <Text style={styles.emptyStateText}>Start a measurement and unfinished work will appear here.</Text>
-              <Pressable onPress={handleStartMeasurement} style={styles.heroButton}>
-                <Text style={styles.heroButtonText}>New measurement</Text>
-              </Pressable>
-            </View>
-          ) : (
-            measurementDrafts.map((draft) => {
-              const photoCount = [draft.capturedPhotos?.front, draft.capturedPhotos?.side]
-                .filter(hasPhotoReference).length;
-              const draftName = draft.measurementDetails?.customerName || (
-                profile?.mode === "client" ? "My measurement" : "Untitled measurement"
-              );
-
-              return (
-                <View key={draft.id} style={styles.recordCard}>
-                  <View style={styles.recordAvatar}>
-                    <Text style={styles.recordAvatarText}>{photoCount}/2</Text>
-                  </View>
-                  <View style={styles.recordBody}>
-                    <Text style={styles.recordName}>{draftName}</Text>
-                    <View style={styles.recordChipRow}>
-                      <Text style={styles.recordChip}>{draft.stage === "review" ? "Review ready" : "Capture draft"}</Text>
-                      <Text style={styles.recordChip}>{draft.measurementDetails?.profile === "male" ? "Male" : "Female"}</Text>
-                    </View>
-                    <View style={styles.draftProgress}>
-                      {[0, 1].map((stepIndex) => (
-                        <View
-                          key={stepIndex}
-                          style={[
-                            styles.draftProgressDot,
-                            stepIndex < photoCount && styles.draftProgressDotDone,
-                          ]}
-                        />
-                      ))}
-                    </View>
-                    <Text style={styles.recordDate}>{formatShortDate(draft.updatedAt || draft.createdAt)}</Text>
-                  </View>
-                  <View style={styles.recordActionStack}>
-                    <RecordActionButton
-                      onPress={() => handleContinueDraft(draft)}
-                      label="Continue"
-                      Icon={ChevronRight}
-                    />
-                    <RecordActionButton
-                      onPress={() => setDraftToDelete(draft)}
-                      label="Delete"
-                      Icon={Trash2}
-                      danger
-                    />
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </ScrollView>
-        {draftDeleteModal}
-      </AppShell>
+      <DraftsScreen
+        deleteModal={draftDeleteModal}
+        draftsLoading={draftsLoading}
+        isLightMode={isLightMode}
+        measurementDrafts={measurementDrafts}
+        onBack={() => setScreen("home")}
+        onContinueDraft={handleContinueDraft}
+        onDeleteDraft={setDraftToDelete}
+        onNavigate={handleNavigate}
+        onNewMeasurement={handleStartMeasurement}
+        plan={plan}
+        profile={profile}
+        status={status}
+      />
     );
   }
 
   if (screen === "reminders") {
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Reminders"
-          subtitle="Save follow-ups, fittings, pickup dates, and client tasks."
-          onBack={() => setScreen("home")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {status ? <Text style={styles.noticeText}>{status}</Text> : null}
-          <View style={styles.photoSourceStack}>
-            <PhotoSourceTile
-              icon={Bell}
-              title="Save reminder"
-              text="Add fitting, pickup, or follow-up work."
-              onPress={() => {
-                resetReminderForm();
-                loadSavedRecords({ openScreen: false });
-                setScreen("reminderForm");
-              }}
-              tone="amber"
-              primary
-            />
-            <PhotoSourceTile
-              icon={ListChecks}
-              title="View reminders"
-              text={`${reminders.length} active reminder${reminders.length === 1 ? "" : "s"}.`}
-              onPress={() => {
-                loadReminders();
-                setScreen("reminderList");
-              }}
-              tone="rose"
-            />
-          </View>
-        </ScrollView>
-      </AppShell>
+      <RemindersHomeScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("home")}
+        onNavigate={handleNavigate}
+        onOpenForm={() => {
+          resetReminderForm();
+          loadSavedRecords({ openScreen: false });
+          setScreen("reminderForm");
+        }}
+        onOpenList={() => {
+          loadReminders();
+          setScreen("reminderList");
+        }}
+        reminders={reminders}
+        status={status}
+      />
     );
   }
 
   if (screen === "reminderForm") {
-    const reminderTypes = ["Fitting", "Pickup", "Delivery", "Follow-up", "Other"];
-    const customerSuggestions = getReminderCustomerSuggestions(savedRecords, reminderForm.customerName);
-
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={editingReminderId ? "Edit reminder" : "Save reminder"}
-          subtitle="Set the client, reason, and exact due time."
-          onBack={() => setScreen("reminders")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.detailsPanel}>
-            <Text style={styles.detailsTitle}>Reminder details</Text>
-            <Text style={styles.detailsText}>Your phone will alert you at the selected date and time.</Text>
-            <TextInput
-              value={reminderForm.customerName}
-              onChangeText={(customerName) => setReminderForm((currentForm) => ({
-                ...currentForm,
-                cloudCustomerId: "",
-                customerName,
-              }))}
-              placeholder="Customer name"
-              placeholderTextColor="#8c8576"
-              style={styles.input}
-            />
-            {recordsLoading ? (
-              <Text style={styles.customerSuggestionHint}>Loading saved customers...</Text>
-            ) : null}
-            {customerSuggestions.length > 0 ? (
-              <View style={styles.customerSuggestionList}>
-                {customerSuggestions.map((customer) => (
-                  <Pressable
-                    key={customer.id}
-                    onPress={() => setReminderForm((currentForm) => ({
-                      ...currentForm,
-                      cloudCustomerId: customer.cloudCustomerId,
-                      customerName: customer.name,
-                    }))}
-                    style={({ pressed }) => [
-                      styles.customerSuggestionItem,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <View style={styles.customerSuggestionAvatar}>
-                      <Text style={styles.customerSuggestionAvatarText}>{getRecordInitials(customer.name)}</Text>
-                    </View>
-                    <View style={styles.customerSuggestionBody}>
-                      <Text style={styles.customerSuggestionName}>{customer.name}</Text>
-                      <Text style={styles.customerSuggestionMeta}>
-                        {customer.profile} - Updated {formatShortDate(customer.updatedAt)}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            <TextInput
-              value={reminderForm.title}
-              onChangeText={(title) => setReminderForm((currentForm) => ({ ...currentForm, title }))}
-              placeholder="Reminder title"
-              placeholderTextColor="#8c8576"
-              style={styles.input}
-            />
-            <View style={styles.reminderTypeGrid}>
-              {reminderTypes.map((type) => (
-                <Pressable
-                  key={type}
-                  onPress={() => setReminderForm((currentForm) => ({ ...currentForm, type }))}
-                  style={[
-                    styles.reminderTypeOption,
-                    reminderForm.type === type && styles.reminderTypeOptionActive,
-                  ]}
-                >
-                  <Text style={[
-                    styles.reminderTypeText,
-                    reminderForm.type === type && styles.reminderTypeTextActive,
-                  ]}
-                  >
-                    {type}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.formSplitRow}>
-              <TextInput
-                value={reminderForm.dueDate}
-                onChangeText={(dueDate) => setReminderForm((currentForm) => ({ ...currentForm, dueDate }))}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#8c8576"
-                style={[styles.input, styles.splitInput]}
-              />
-              <TextInput
-                value={reminderForm.dueTime}
-                onChangeText={(dueTime) => setReminderForm((currentForm) => ({ ...currentForm, dueTime }))}
-                placeholder="HH:MM"
-                placeholderTextColor="#8c8576"
-                style={[styles.input, styles.splitInput]}
-              />
-            </View>
-            <TextInput
-              value={reminderForm.note}
-              onChangeText={(note) => setReminderForm((currentForm) => ({ ...currentForm, note }))}
-              placeholder="Notes optional"
-              placeholderTextColor="#8c8576"
-              multiline
-              style={[styles.input, styles.noteInput]}
-            />
-          </View>
-
-          <Pressable
-            disabled={saving}
-            onPress={handleSaveReminder}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              saving && styles.disabledButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.primaryButtonText}>{saving ? "Saving..." : editingReminderId ? "Update reminder" : "Save reminder"}</Text>
-          </Pressable>
-          {status ? (
-            <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
-          ) : null}
-        </ScrollView>
-      </AppShell>
+      <ReminderFormScreen
+        editingReminderId={editingReminderId}
+        isLightMode={isLightMode}
+        isPositiveStatus={isPositiveStatus}
+        onBack={() => setScreen("reminders")}
+        onNavigate={handleNavigate}
+        onSaveReminder={handleSaveReminder}
+        recordsLoading={recordsLoading}
+        reminderForm={reminderForm}
+        savedRecords={savedRecords}
+        saving={saving}
+        setReminderForm={setReminderForm}
+        status={status}
+      />
     );
   }
 
   if (screen === "reminderList") {
-    const sortedReminders = [...reminders].sort((firstReminder, secondReminder) => (
-      new Date(firstReminder.dueAt || 0) - new Date(secondReminder.dueAt || 0)
-    ));
-    const nextReminder = sortedReminders[0];
-
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Saved reminders"
-          subtitle="Open, edit, or delete upcoming tailor tasks."
-          onBack={() => setScreen("reminders")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {status ? <Text style={status === "Reminder deleted." ? styles.successText : styles.errorText}>{status}</Text> : null}
-
-          {remindersLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={amber} size="large" />
-              <Text style={styles.emptyStateText}>Loading reminders...</Text>
-            </View>
-          ) : sortedReminders.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>No reminders yet</Text>
-              <Text style={styles.emptyStateText}>Save a reminder when you need to follow up with a client.</Text>
-              <Pressable
-                onPress={() => {
-                  resetReminderForm();
-                  setScreen("reminderForm");
-                  loadSavedRecords({ openScreen: false });
-                }}
-                style={styles.heroButton}
-              >
-                <Text style={styles.heroButtonText}>Save reminder</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <>
-              <View style={styles.resultHero}>
-                <Text style={styles.resultHeroKicker}>Next reminder</Text>
-                <Text style={styles.resultHeroTitle}>{nextReminder.title || nextReminder.type}</Text>
-                <Text style={styles.resultHeroMeta}>
-                  {nextReminder.customerName || "No customer linked"} - {formatReminderDateTime(nextReminder)}
-                </Text>
-              </View>
-
-              {sortedReminders.map((reminder) => (
-                <View key={reminder.id} style={styles.recordCard}>
-                  <View style={styles.recordAvatar}>
-                    <Text style={styles.recordAvatarText}>{reminder.type?.slice(0, 2).toUpperCase() || "!"}</Text>
-                  </View>
-                  <View style={styles.recordBody}>
-                    <Text style={styles.recordName}>{reminder.title || reminder.type}</Text>
-                    <View style={styles.recordChipRow}>
-                      <Text style={styles.recordChip}>{reminder.type}</Text>
-                      <Text style={styles.recordChip}>{reminder.customerName || "No customer"}</Text>
-                    </View>
-                    <Text style={styles.recordDate}>{formatReminderDateTime(reminder)}</Text>
-                    {reminder.note ? <Text style={styles.reminderNote}>{reminder.note}</Text> : null}
-                  </View>
-                  <View style={styles.recordActionStack}>
-                    <RecordActionButton
-                      onPress={() => handleEditReminder(reminder)}
-                      label="Edit"
-                      Icon={Edit3}
-                    />
-                    <RecordActionButton
-                      onPress={() => setReminderToDelete(reminder)}
-                      label="Delete"
-                      Icon={Trash2}
-                      danger
-                    />
-                  </View>
-                </View>
-              ))}
-            </>
-          )}
-        </ScrollView>
-        {reminderDeleteModal}
-      </AppShell>
+      <ReminderListScreen
+        deleteModal={reminderDeleteModal}
+        isLightMode={isLightMode}
+        onBack={() => setScreen("reminders")}
+        onDeleteReminder={setReminderToDelete}
+        onEditReminder={handleEditReminder}
+        onNavigate={handleNavigate}
+        onNewReminder={() => {
+          resetReminderForm();
+          setScreen("reminderForm");
+          loadSavedRecords({ openScreen: false });
+        }}
+        reminders={reminders}
+        remindersLoading={remindersLoading}
+        status={status}
+      />
     );
   }
 
   if (screen === "styles") {
-    const modeCopy = profile?.mode === "client"
-      ? {
-          title: "My style ideas",
-          subtitle: "Save outfits you like and keep them ready for tailor conversations.",
-          save: "Save an outfit idea",
-          gallery: "View saved ideas",
-        }
-      : {
-          title: "Style library",
-          subtitle: "Keep client inspiration out of phone-gallery chaos.",
-          save: "Save style",
-          gallery: "View gallery",
-        };
+    const plan = getUserPlan(profile);
 
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={modeCopy.title}
-          subtitle={modeCopy.subtitle}
-          onBack={() => setScreen("home")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {status ? <Text style={styles.noticeText}>{status}</Text> : null}
-          <View style={styles.photoSourceStack}>
-            <PhotoSourceTile
-              icon={Save}
-              title={modeCopy.save}
-              text="Choose an image, add details if needed, then save."
-              onPress={() => {
-                resetStyleForm();
-                setScreen("styleForm");
-              }}
-              tone="amber"
-              primary
-            />
-            <PhotoSourceTile
-              icon={ImageIcon}
-              title={modeCopy.gallery}
-              text={`${styleLibrary.length} saved style${styleLibrary.length === 1 ? "" : "s"}.`}
-              onPress={() => {
-                loadStyleLibrary();
-                loadSavedRecords({ openScreen: false });
-                setScreen("styleGallery");
-              }}
-              tone="teal"
-            />
-          </View>
-        </ScrollView>
-      </AppShell>
+      <StylesHomeScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("home")}
+        onNavigate={handleNavigate}
+        onOpenForm={() => {
+          resetStyleForm();
+          setScreen("styleForm");
+        }}
+        onOpenGallery={() => {
+          loadStyleLibrary();
+          loadSavedRecords({ openScreen: false });
+          setScreen("styleGallery");
+        }}
+        plan={plan}
+        profile={profile}
+        status={status}
+        styleLibrary={styleLibrary}
+      />
     );
   }
 
   if (screen === "styleForm") {
-    const availableStyleCategories = mergeStyleCategories(customStyleCategories);
-
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={profile?.mode === "client" ? "Save style idea" : "Save style"}
-          subtitle="The style name is optional. The image is what matters most."
-          onBack={() => setScreen("styles")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={handlePickStyleImage} style={({ pressed }) => [styles.stylePicker, pressed && styles.pressed]}>
-            {styleForm.image?.uri ? (
-              <Image source={{ uri: styleForm.image.uri }} style={styles.stylePickerImage} resizeMode="cover" />
-            ) : (
-              <Text style={styles.stylePickerText}>Choose image</Text>
-            )}
-          </Pressable>
-
-          <View style={styles.detailsPanel}>
-            <Text style={styles.detailsTitle}>Style details</Text>
-            <TextInput
-              value={styleForm.title}
-              onChangeText={(title) => setStyleForm((currentForm) => ({ ...currentForm, title }))}
-              placeholder="Style name optional"
-              placeholderTextColor="#8c8576"
-              style={styles.input}
-            />
-            {profile?.mode === "tailor" ? (
-              <View style={styles.inlineCategoryCreator}>
-                <TextInput
-                  value={newStyleCategory}
-                  onChangeText={setNewStyleCategory}
-                  placeholder="Create category, e.g. Senator wear"
-                  placeholderTextColor="#8c8576"
-                  style={[styles.input, styles.categoryInput]}
-                />
-                <Pressable
-                  disabled={saving}
-                  onPress={handleSaveStyleCategory}
-                  style={({ pressed }) => [styles.categoryAddButton, saving && styles.disabledButton, pressed && styles.pressed]}
-                >
-                  <Text style={styles.categoryAddButtonText}>Add</Text>
-                </Pressable>
-              </View>
-            ) : null}
-            <View style={styles.reminderTypeGrid}>
-              {availableStyleCategories.map((category) => (
-                <Pressable
-                  key={category}
-                  onPress={() => setStyleForm((currentForm) => ({ ...currentForm, category }))}
-                  style={[
-                    styles.reminderTypeOption,
-                    styleForm.category === category && styles.reminderTypeOptionActive,
-                  ]}
-                >
-                  <Text style={[
-                    styles.reminderTypeText,
-                    styleForm.category === category && styles.reminderTypeTextActive,
-                  ]}
-                  >
-                    {category}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput
-              value={styleForm.notes}
-              onChangeText={(notes) => setStyleForm((currentForm) => ({ ...currentForm, notes }))}
-              placeholder={profile?.mode === "client"
-                ? "Occasion, fabric, fit preference, or what you like about it."
-                : "Fabric, neckline, sleeve, body type, or fitting notes."}
-              placeholderTextColor="#8c8576"
-              multiline
-              style={[styles.input, styles.noteInput]}
-            />
-          </View>
-
-          <Pressable
-            disabled={saving}
-            onPress={handleSaveStyle}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              saving && styles.disabledButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.primaryButtonText}>{saving ? "Saving..." : "Save style"}</Text>
-          </Pressable>
-          {status ? (
-            <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
-          ) : null}
-        </ScrollView>
-      </AppShell>
+      <StyleFormScreen
+        customStyleCategories={customStyleCategories}
+        isLightMode={isLightMode}
+        isPositiveStatus={isPositiveStatus}
+        newStyleCategory={newStyleCategory}
+        onBack={() => setScreen("styles")}
+        onNavigate={handleNavigate}
+        onPickStyleImage={handlePickStyleImage}
+        onSaveCategory={handleSaveStyleCategory}
+        onSaveStyle={handleSaveStyle}
+        profile={profile}
+        saving={saving}
+        setNewStyleCategory={setNewStyleCategory}
+        setStyleForm={setStyleForm}
+        status={status}
+        styleForm={styleForm}
+      />
     );
   }
 
   if (screen === "styleGallery") {
-    const searchableTerm = styleSearch.trim().toLowerCase();
-    const availableStyleCategories = mergeStyleCategories(customStyleCategories);
-    const styleCategoryCounts = styleLibrary.reduce((counts, style) => ({
-      ...counts,
-      [style.category]: (counts[style.category] || 0) + 1,
-    }), {});
-    const filteredStyles = styleLibrary
-      .filter((style) => styleCategoryFilter === "all" || style.category === styleCategoryFilter)
-      .filter((style) => `${style.title} ${style.category} ${style.notes}`.toLowerCase().includes(searchableTerm));
-
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={profile?.mode === "client" ? "Saved ideas" : "Style gallery"}
-          subtitle="Browse saved style images in grid or list view."
-          onBack={() => setScreen("styles")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {status ? <Text style={status === "Style deleted." ? styles.successText : styles.errorText}>{status}</Text> : null}
-
-          <View style={styles.galleryToolbar}>
-            <TextInput
-              value={styleSearch}
-              onChangeText={setStyleSearch}
-              placeholder="Search styles"
-              placeholderTextColor="#8c8576"
-              style={[styles.input, styles.gallerySearch]}
-            />
-            <View style={styles.galleryModeRow}>
-              <Pressable
-                onPress={() => setStyleViewMode("grid")}
-                style={[styles.galleryModeButton, styleViewMode === "grid" && styles.galleryModeButtonActive]}
-              >
-                <Text style={[styles.galleryModeText, styleViewMode === "grid" && styles.galleryModeTextActive]}>Grid</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setStyleViewMode("list")}
-                style={[styles.galleryModeButton, styleViewMode === "list" && styles.galleryModeButtonActive]}
-              >
-                <Text style={[styles.galleryModeText, styleViewMode === "list" && styles.galleryModeTextActive]}>List</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroller}>
-            {["all", ...availableStyleCategories].map((category) => (
-              <Pressable
-                key={category}
-                onPress={() => setStyleCategoryFilter(category)}
-                style={[
-                  styles.categoryChip,
-                  styleCategoryFilter === category && styles.categoryChipActive,
-                ]}
-              >
-                <Text style={[
-                  styles.categoryChipText,
-                  styleCategoryFilter === category && styles.categoryChipTextActive,
-                ]}
-                >
-                  {category === "all" ? `All ${styleLibrary.length}` : `${category} ${styleCategoryCounts[category] || 0}`}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          {stylesLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={amber} size="large" />
-              <Text style={styles.emptyStateText}>Loading styles...</Text>
-            </View>
-          ) : filteredStyles.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>No styles found</Text>
-              <Text style={styles.emptyStateText}>Save a style image to start building your gallery.</Text>
-              <Pressable
-                onPress={() => {
-                  resetStyleForm();
-                  setScreen("styleForm");
-                }}
-                style={styles.heroButton}
-              >
-                <Text style={styles.heroButtonText}>Save style</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styleViewMode === "grid" ? styles.styleGrid : styles.styleList}>
-              {filteredStyles.map((style) => (
-                <Pressable
-                  key={style.id}
-                  onPress={() => {
-                    setSelectedStyle(style);
-                    setStyleAttachSearch("");
-                    loadSavedRecords({ openScreen: false });
-                    setScreen("styleDetail");
-                  }}
-                  style={({ pressed }) => [
-                    styleViewMode === "grid" ? styles.styleGridItem : styles.styleListItem,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styleViewMode === "grid" ? styles.styleThumbFrame : styles.styleListThumbFrame}>
-                    <Image
-                      source={{ uri: style.imageUrl }}
-                      style={styles.styleThumb}
-                      resizeMode="cover"
-                    />
-                  </View>
-                  <View style={styleViewMode === "grid" ? styles.styleGridText : styles.styleListText}>
-                    <Text style={styles.styleTitle} numberOfLines={1}>{style.title || style.category}</Text>
-                    <View style={styles.styleMetaRow}>
-                      <Text style={styles.styleCategoryPill}>{style.category}</Text>
-                      <Text style={styles.styleDateText}>
-                        {style.updatedAt ? new Date(style.updatedAt).toLocaleDateString() : "Saved"}
-                      </Text>
-                    </View>
-                    {style.notes ? <Text style={styles.styleNotePreview} numberOfLines={2}>{style.notes}</Text> : null}
-                  </View>
-                  <Pressable
-                    onPress={() => setStyleToDelete(style)}
-                    style={({ pressed }) => [
-                      styles.styleDeleteQuickButton,
-                      pressed && styles.recordDeleteButtonPressed,
-                    ]}
-                  >
-                    <Trash2 color="#C83434" size={14} strokeWidth={2.7} />
-                    <Text style={styles.styleDeleteQuickText}>Delete</Text>
-                  </Pressable>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </ScrollView>
-        {styleDeleteModal}
-      </AppShell>
+      <StyleGalleryScreen
+        customStyleCategories={customStyleCategories}
+        isLightMode={isLightMode}
+        onBack={() => setScreen("styles")}
+        onDeleteStyle={setStyleToDelete}
+        onNavigate={handleNavigate}
+        onOpenStyle={(style) => {
+          setSelectedStyle(style);
+          setStyleAttachSearch("");
+          loadSavedRecords({ openScreen: false });
+          setScreen("styleDetail");
+        }}
+        onOpenStyleForm={() => {
+          resetStyleForm();
+          setScreen("styleForm");
+        }}
+        onShareCategory={handleShareStyleCategory}
+        profile={profile}
+        setStyleCategoryFilter={setStyleCategoryFilter}
+        setStyleSearch={setStyleSearch}
+        setStyleViewMode={setStyleViewMode}
+        status={status}
+        styleCategoryFilter={styleCategoryFilter}
+        styleLibrary={styleLibrary}
+        styleSearch={styleSearch}
+        stylesLoading={stylesLoading}
+        styleViewMode={styleViewMode}
+      />
     );
   }
 
   if (screen === "styleDetail" && selectedStyle) {
-    const attachedCustomers = selectedStyle.attachedCustomers || [];
-    const customerSuggestions = getStyleCustomerSuggestions(savedRecords, styleAttachSearch, attachedCustomers);
-
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={selectedStyle?.title || selectedStyle?.category || "Style"}
-          subtitle={selectedStyle?.category || "Saved style"}
+      <>
+        <StyleDetailScreen
+          deleteModal={styleDeleteModal}
+          isLightMode={isLightMode}
+          onAttachCustomer={handleAttachStyleToCustomer}
           onBack={() => {
             setSelectedStyle(null);
             setScreen("styleGallery");
           }}
+          onDeleteStyle={setStyleToDelete}
+          onDetachCustomer={handleDetachStyleFromCustomer}
+          onOpenStyleAttachmentUpgrade={openStyleAttachmentUpgradePrompt}
+          onNavigate={handleNavigate}
+          profile={profile}
+          savedRecords={savedRecords}
+          saving={saving}
+          selectedStyle={selectedStyle}
+          setStyleAttachSearch={setStyleAttachSearch}
+          status={status}
+          styleAttachmentsLocked={!canUsePlanFeature(profile, "styleAttachments")}
+          styleAttachSearch={styleAttachSearch}
         />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          {selectedStyle?.imageUrl ? (
-            <Image source={{ uri: selectedStyle.imageUrl }} style={styles.styleDetailImage} resizeMode="cover" />
-          ) : null}
-          <View style={styles.infoPanel}>
-            <Text style={styles.policyTitle}>{selectedStyle?.title || selectedStyle?.category || "Saved style"}</Text>
-            {selectedStyle?.notes ? <Text style={styles.policyText}>{selectedStyle.notes}</Text> : null}
-            <Text style={styles.recordDate}>
-              {selectedStyle?.updatedAt ? new Date(selectedStyle.updatedAt).toLocaleDateString() : "Saved"}
-            </Text>
-          </View>
-          {profile?.mode === "tailor" ? (
-            <View style={styles.infoPanel}>
-              <Text style={styles.policyTitle}>Attached customers</Text>
-              {attachedCustomers.length === 0 ? (
-                <Text style={styles.policyText}>No customer attached yet. Search a saved customer below.</Text>
-              ) : (
-                attachedCustomers.map((attachment) => (
-                  <View key={attachment.id || attachment.cloudCustomerId} style={styles.attachmentRow}>
-                    <View style={styles.recordAvatarSmall}>
-                      <Text style={styles.recordAvatarText}>{getRecordInitials(attachment.customerName)}</Text>
-                    </View>
-                    <View style={styles.recordBody}>
-                      <Text style={styles.recordName}>{attachment.customerName}</Text>
-                      <Text style={styles.recordDate}>Attached style</Text>
-                    </View>
-                    <Pressable
-                      disabled={saving}
-                      onPress={() => handleDetachStyleFromCustomer(attachment)}
-                      style={({ pressed }) => [styles.recordDeleteButton, pressed && styles.recordDeleteButtonPressed]}
-                    >
-                      <Trash2 color="#C83434" size={15} strokeWidth={2.7} />
-                      <Text style={styles.recordDeleteText}>Remove</Text>
-                    </Pressable>
-                  </View>
-                ))
-              )}
-
-              <TextInput
-                value={styleAttachSearch}
-                onChangeText={setStyleAttachSearch}
-                placeholder="Search customer to attach"
-                placeholderTextColor="#8c8576"
-                style={styles.input}
-              />
-              {styleAttachSearch.trim() && customerSuggestions.length === 0 ? (
-                <Text style={styles.policyText}>No matching unattached customer found.</Text>
-              ) : null}
-              {customerSuggestions.length > 0 ? (
-                customerSuggestions.map((customer) => (
-                  <Pressable
-                    key={customer.id}
-                    disabled={saving}
-                    onPress={() => handleAttachStyleToCustomer(customer)}
-                    style={({ pressed }) => [styles.customerSuggestionButton, pressed && styles.pressed]}
-                  >
-                    <View>
-                      <Text style={styles.recordName}>{customer.name}</Text>
-                      <Text style={styles.recordDate}>{customer.profile} - {formatShortDate(customer.updatedAt)}</Text>
-                    </View>
-                    <ChevronRight color={palette.amberDark} size={21} strokeWidth={2.8} />
-                  </Pressable>
-                ))
-              ) : null}
-              {status ? (
-                <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
-              ) : null}
-            </View>
-          ) : null}
-          <Pressable
-            onPress={() => setStyleToDelete(selectedStyle)}
-            style={({ pressed }) => [styles.deleteWideButton, pressed && styles.recordDeleteButtonPressed]}
-          >
-            <Trash2 color="#C83434" size={15} strokeWidth={2.7} />
-            <Text style={styles.recordDeleteText}>Delete style</Text>
-          </Pressable>
-        </ScrollView>
-        {styleDeleteModal}
-      </AppShell>
+        {upgradePromptModal}
+      </>
     );
   }
 
   if (screen === "more") {
-    const moreItems = [
-      { id: "profile", title: "Profile", text: "Account details and workspace mode." },
-      { id: "plans", title: "Plans", text: "Compare Free and Pro, then upgrade when payment is ready." },
-      { id: "help", title: "Help", text: "Photo capture, review, and saving guidance." },
-      { id: "privacy", title: "Privacy policy", text: "How measurement data and photos are handled." },
-      { id: "about", title: "About TailorIQ", text: "What the app does and who it is for." },
-    ];
-
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="More"
-          subtitle="Profile, support, privacy, and app information."
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          <View style={styles.profileSummary}>
-            <Text style={styles.profileName}>{profile?.fullName || profile?.username || "TailorIQ user"}</Text>
-            <Text style={styles.profileMeta}>{profile?.email}</Text>
-            <Text style={styles.profileMode}>{profile?.mode === "client" ? "Client mode" : "Tailor mode"}</Text>
-          </View>
-
-          <View style={styles.themeToggleRow}>
-            <View>
-              <Text style={styles.themeToggleTitle}>Appearance</Text>
-              <Text style={styles.themeToggleText}>{isLightMode ? "Light mode is active" : "Dark mode is active"}</Text>
-            </View>
-            <AppearanceToggle
-              isLightMode={isLightMode}
-              onToggle={() => setIsLightMode((currentValue) => !currentValue)}
-            />
-          </View>
-
-          {moreItems.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => {
-                setStatus("");
-                setScreen(item.id);
-              }}
-              style={({ pressed }) => [styles.moreItem, pressed && styles.pressed]}
-            >
-              <View>
-                <Text style={styles.moreItemTitle}>{item.title}</Text>
-                <Text style={styles.moreItemText}>{item.text}</Text>
-              </View>
-              <ChevronRight color={palette.amberDark} size={21} strokeWidth={2.8} />
-            </Pressable>
-          ))}
-
-          <Pressable onPress={() => setScreen("mode")} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Change mode</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleLogout}
-            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </Pressable>
-        </ScrollView>
-      </AppShell>
+      <MoreScreen
+        isLightMode={isLightMode}
+        onBottomNavigate={handleNavigate}
+        onChangeMode={() => setScreen("mode")}
+        onLogout={handleLogout}
+        onMenuNavigate={(nextScreen) => {
+          setStatus("");
+          setScreen(nextScreen);
+        }}
+        onToggleTheme={handleToggleTheme}
+        profile={profile}
+      />
     );
   }
 
   if (screen === "plans") {
     const plan = getUserPlan(profile);
-    const planFeatures = [
-      "Unlimited customer records",
-      "Unlimited saved style ideas",
-      "Reminders for fittings and pickup",
-      "Book photo scanning for manual input",
-      "Custom shorthand dictionary",
-      "Create your own style categories",
-      "Attach style ideas to customers",
-      "Early access to workflow improvements",
-    ];
-    const billingOptions = [
-      {
-        id: "yearly",
-        title: "Yearly",
-        price: "N29,900.00",
-        note: "N2,491.67/month, billed yearly",
-        badge: "Save 69%",
-      },
-      {
-        id: "monthly",
-        title: "Monthly",
-        price: "N7,900.00",
-        note: "Billed monthly",
-      },
-    ];
-    const selectedBilling = billingOptions.find((option) => option.id === selectedBillingPlan) || billingOptions[0];
 
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Upgrade TailorIQ"
-          subtitle="Unlock the shop tools built around your measurement workflow."
-          onBack={() => setScreen("more")}
-        />
-
-        <ScrollView contentContainerStyle={styles.planScreenContent}>
-          <View style={[styles.premiumPlanCard, isLightMode && styles.premiumPlanCardLight]}>
-            <View style={styles.premiumBadgeRow}>
-              <Text style={styles.premiumBadge}>Tailor Shop</Text>
-              <Text style={[styles.premiumCurrentBadge, isLightMode && styles.premiumCurrentBadgeLight]}>
-                Current: {plan.label}
-              </Text>
-            </View>
-
-            <Text style={[styles.premiumPrice, isLightMode && styles.premiumPriceLight]}>{selectedBilling.price}</Text>
-            <Text style={[styles.premiumPriceNote, isLightMode && styles.premiumPriceNoteLight]}>{selectedBilling.note}</Text>
-
-            <Text style={[styles.premiumIntro, isLightMode && styles.premiumIntroLight]}>
-              Keep the measuring core free. Upgrade when your shop needs faster follow-up, better organization, and less manual admin work.
-            </Text>
-
-            <View style={[styles.billingToggleRow, isLightMode && styles.billingToggleRowLight]}>
-              {billingOptions.map((option) => {
-                const active = selectedBillingPlan === option.id;
-
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => setSelectedBillingPlan(option.id)}
-                    style={({ pressed }) => [
-                      styles.billingToggle,
-                      active && styles.billingToggleActive,
-                      isLightMode && !active && styles.billingToggleLight,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={[
-                      styles.billingToggleText,
-                      isLightMode && !active && styles.billingToggleTextLight,
-                      active && styles.billingToggleTextActive,
-                    ]}>
-                      {option.title}
-                    </Text>
-                    {option.badge ? <Text style={styles.billingToggleBadge}>{option.badge}</Text> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.premiumFeatureList}>
-              {planFeatures.map((feature) => (
-                <View key={feature} style={styles.premiumFeatureRow}>
-                  <Plus color={palette.amber} size={18} strokeWidth={3} />
-                  <Text style={[styles.premiumFeatureText, isLightMode && styles.premiumFeatureTextLight]}>{feature}</Text>
-                </View>
-              ))}
-            </View>
-
-            <Pressable
-              onPress={() => setStatus(`Payment is not connected yet. Next step is adding Stripe or Paystack checkout for ${selectedBilling.title}.`)}
-              style={({ pressed }) => [styles.planUpgradeButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.planUpgradeButtonText}>Get Tailor Shop</Text>
-            </Pressable>
-
-            {status ? <Text style={[styles.premiumStatusText, isLightMode && styles.premiumStatusTextLight]}>{status}</Text> : null}
-          </View>
-
-          <Text style={[styles.planFooterNote, isLightMode && styles.planFooterNoteLight]}>
-            Photo measurement, review, body guide, saved results, and sharing remain part of the free TailorIQ experience.
-          </Text>
-        </ScrollView>
-      </AppShell>
+      <PlansScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("more")}
+        onNavigate={handleNavigate}
+        onSelectBilling={setSelectedBillingPlan}
+        onUpgradePress={(selectedBilling) => setStatus(`Payment is not connected yet. Next step is adding Stripe or Paystack checkout for ${selectedBilling.title}.`)}
+        plan={plan}
+        selectedBillingPlan={selectedBillingPlan}
+        status={status}
+      />
     );
   }
 
   if (screen === "profile") {
+    const plan = getUserPlan(profile);
+
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Profile"
-          subtitle="The identity attached to this TailorIQ workspace."
-          onBack={() => setScreen("more")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.infoPanel}>
-            <Text style={styles.infoLabel}>Full name</Text>
-            <Text style={styles.infoValue}>{profile?.fullName || "Not added"}</Text>
-            <Text style={styles.infoLabel}>Username</Text>
-            <Text style={styles.infoValue}>{profile?.username || "Not added"}</Text>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoValue}>{profile?.email || "Not added"}</Text>
-            <Text style={styles.infoLabel}>Mode</Text>
-            <Text style={styles.infoValue}>{profile?.mode === "client" ? "Client mode" : "Tailor mode"}</Text>
-            <Text style={styles.infoLabel}>Plan</Text>
-            <Text style={styles.infoValue}>{getUserPlan(profile).label}</Text>
-          </View>
-
-          <View style={styles.inlineSettingsBlock}>
-            <Text style={styles.policyTitle}>Change username</Text>
-            <Text style={styles.policyText}>Use lowercase letters, numbers, or underscores. This is the name other users can search when sharing to you.</Text>
-            <TextInput
-              value={usernameDraft}
-              onChangeText={setUsernameDraft}
-              autoCapitalize="none"
-              placeholder={profile?.username || "New username"}
-              placeholderTextColor="#8c8576"
-              style={styles.input}
-            />
-            <Pressable
-              disabled={saving}
-              onPress={handleChangeUsername}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.secondaryButtonText}>{saving ? "Saving..." : "Update username"}</Text>
-            </Pressable>
-            {status && profileStatusTarget === "username" ? (
-              <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
-            ) : null}
-          </View>
-
-          {profile?.mode === "tailor" ? (
-            <View style={styles.inlineSettingsBlock}>
-              <Text style={styles.policyTitle}>Customize shorthand</Text>
-              <Text style={styles.policyText}>
-                Add one rule per line, like SH = shoulder or LL = lower length. Ambiguous shorthand will still ask before filling values.
-              </Text>
-              <TextInput
-                value={customShorthandText}
-                onChangeText={setCustomShorthandText}
-                placeholder={"SH = shoulder\nLL = lower length"}
-                placeholderTextColor="#8c8576"
-                multiline
-                style={[styles.input, styles.noteInput]}
-              />
-              <Pressable
-                disabled={saving}
-                onPress={handleSaveCustomShorthand}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  saving && styles.disabledButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.secondaryButtonText}>{saving ? "Saving..." : "Save shorthand"}</Text>
-              </Pressable>
-              {status && profileStatusTarget === "shorthand" ? (
-                <Text style={isPositiveStatus(status) ? styles.actionSuccessText : styles.actionErrorText}>{status}</Text>
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={[styles.inlineSettingsBlock, styles.dangerZoneBlock]}>
-            <Text style={styles.dangerZoneTitle}>Delete account</Text>
-            <Text style={styles.policyText}>
-              Permanently remove this account and the saved TailorIQ data attached to it. This cannot be undone.
-            </Text>
-            <Pressable
-              disabled={saving}
-              onPress={() => {
-                setStatus("");
-                setProfileStatusTarget("account");
-                setAccountDeleteText("");
-                setAccountDeleteOpen(true);
-              }}
-              style={({ pressed }) => [
-                styles.deleteAccountButton,
-                saving && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deleteAccountButtonText}>Delete account</Text>
-            </Pressable>
-          </View>
-          {accountDeleteModal}
-        </ScrollView>
-      </AppShell>
+      <ProfileScreen
+        accountDeleteModal={accountDeleteModal}
+        customShorthandText={customShorthandText}
+        isLightMode={isLightMode}
+        isPositiveStatus={isPositiveStatus}
+        onBack={() => setScreen("more")}
+        onChangeUsername={handleChangeUsername}
+        onNavigate={handleNavigate}
+        onOpenDeleteAccount={() => {
+          setStatus("");
+          setProfileStatusTarget("account");
+          setAccountDeleteText("");
+          setAccountDeleteOpen(true);
+        }}
+        onSaveCustomShorthand={handleSaveCustomShorthand}
+        onSetCustomShorthandText={setCustomShorthandText}
+        onSetUsernameDraft={setUsernameDraft}
+        plan={plan}
+        profile={profile}
+        profileStatusTarget={profileStatusTarget}
+        saving={saving}
+        status={status}
+        usernameDraft={usernameDraft}
+      />
     );
   }
 
   if (screen === "help") {
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Help"
-          subtitle="Quick guidance for better measurement captures."
-          onBack={() => setScreen("more")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          <View style={styles.infoPanel}>
-            <Text style={styles.aboutTitle}>Use TailorIQ with confidence.</Text>
-            <Text style={styles.policyText}>
-              These notes cover the everyday things that make captures cleaner, records easier to trust, and account recovery smoother.
-            </Text>
-          </View>
-          {[
-            "For photo measurements, wear fitted clothes, stand straight, and keep your arms slightly away from the body.",
-            "Make sure the full body is inside the frame from head to feet before capture or upload.",
-            "Enter the real height using the unit that is easiest for you. TailorIQ converts it before analysis.",
-            "Review every generated value before saving. Corrected values are the final record.",
-            "Use reminders for fitting dates, pickup dates, delivery work, or follow-ups.",
-            "If login or saving fails, check your connection and try again. Unsaved work should be reviewed before leaving the page.",
-            "Use password reset from the login page if you forget your password. If signup asks for email verification, check inbox and spam.",
-          ].map((item) => (
-            <View key={item} style={styles.helpItem}>
-              <Text style={styles.helpBullet}>-</Text>
-              <Text style={styles.helpText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </AppShell>
+      <HelpScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("more")}
+        onNavigate={handleNavigate}
+      />
     );
   }
 
   if (screen === "privacy") {
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="Privacy policy"
-          subtitle="A plain-language summary for this mobile version."
-          onBack={() => setScreen("more")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          <View style={styles.infoPanel}>
-            <Text style={styles.policyTitle}>Your measurements</Text>
-            <Text style={styles.policyText}>
-              TailorIQ saves approved measurement records to your signed-in account. Drafts, saved records, styles, reminders, and profile details are kept separate by user account.
-            </Text>
-            <Text style={styles.policyTitle}>Photos</Text>
-            <Text style={styles.policyText}>
-              Photos are used to create measurement estimates. To reduce unnecessary storage, saved mobile measurement records keep the approved values rather than storing duplicate original and censored photo files.
-            </Text>
-            <Text style={styles.policyTitle}>Sharing</Text>
-            <Text style={styles.policyText}>
-              Client measurements should only be shared after review. When sharing to another TailorIQ username, the recipient should only receive the result you choose to send.
-            </Text>
-            <Text style={styles.policyTitle}>Account access</Text>
-            <Text style={styles.policyText}>
-              Account access is protected through email, password, and optional provider login. Keep your password private, use password reset when needed, and log out on shared devices.
-            </Text>
-            <Text style={styles.policyTitle}>Your responsibility</Text>
-            <Text style={styles.policyText}>
-              Only save or share another person's measurements with their permission. Always review generated measurements before using them for cutting, sewing, or client delivery.
-            </Text>
-          </View>
-        </ScrollView>
-      </AppShell>
+      <PrivacyScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("more")}
+        onNavigate={handleNavigate}
+      />
     );
   }
 
   if (screen === "about") {
     return (
-      <AppShell active="more" onNavigate={handleNavigate}>
-        <AppHeader
-          title="About TailorIQ"
-          subtitle="Measure smart. Fit perfect."
-          onBack={() => setScreen("more")}
-        />
-
-        <ScrollView contentContainerStyle={styles.reviewContent}>
-          <View style={styles.infoPanel}>
-            <Text style={styles.aboutTitle}>TailorIQ helps tailors and clients turn guided photos, manual entries, and style ideas into organized measurement work.</Text>
-            <Text style={styles.policyText}>
-              Tailor mode is built for shops that need customer records, drafts, reminders, manual input, style galleries, and reviewed measurements in one place.
-            </Text>
-            <Text style={styles.policyText}>
-              Client mode is built for people who want to capture their own measurements, review the result, keep style inspiration, and share approved values with a tailor.
-            </Text>
-            <Text style={styles.policyText}>
-              TailorIQ is designed around guided capture and human review. The app can suggest measurements, but the final saved record should always be checked before it is used for production work.
-            </Text>
-          </View>
-        </ScrollView>
-      </AppShell>
+      <AboutScreen
+        isLightMode={isLightMode}
+        onBack={() => setScreen("more")}
+        onNavigate={handleNavigate}
+      />
     );
   }
 
   if (screen === "passwordReset") {
     return (
-      <SafeAreaView style={styles.authScreen}>
-        <StatusBar barStyle="light-content" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.keyboardView}
-        >
-          <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
-            <View style={styles.authBrandPanel}>
-              <BrandMark />
-            </View>
-
-            <View style={styles.authPanel}>
-              <Text style={styles.panelTitle}>Reset password</Text>
-              <Text style={styles.panelText}>Create a new password for your TailorIQ account.</Text>
-              <View style={styles.passwordRow}>
-                <TextInput
-                  value={resetPassword}
-                  onChangeText={setResetPassword}
-                  secureTextEntry={!showPassword}
-                  placeholder="New password"
-                  placeholderTextColor="#8c8576"
-                  style={styles.passwordInput}
-                />
-                <Pressable onPress={() => setShowPassword((current) => !current)} style={styles.eyeButton}>
-                  <Text style={styles.eyeText}>{showPassword ? "Hide" : "Show"}</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                value={resetPasswordConfirm}
-                onChangeText={setResetPasswordConfirm}
-                secureTextEntry={!showPassword}
-                placeholder="Confirm new password"
-                placeholderTextColor="#8c8576"
-                style={styles.input}
-              />
-              {status ? <Text style={isPositiveStatus(status) ? styles.successText : styles.errorText}>{status}</Text> : null}
-              <Pressable
-                disabled={saving}
-                onPress={handleUpdatePassword}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  saving && styles.disabledButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.primaryButtonText}>{saving ? "Updating..." : "Update password"}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setStatus("");
-                  setScreen("auth");
-                  setAuthMode("login");
-                }}
-                style={styles.textButton}
-              >
-                <Text style={styles.textButtonText}>Back to login</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+      <PasswordResetScreen
+        isLightMode={isLightMode}
+        isPositiveStatus={isPositiveStatus}
+        onBackToLogin={() => {
+          setStatus("");
+          setScreen("auth");
+          setAuthMode("login");
+        }}
+        onSubmit={handleUpdatePassword}
+        resetPassword={resetPassword}
+        resetPasswordConfirm={resetPasswordConfirm}
+        saving={saving}
+        setResetPassword={setResetPassword}
+        setResetPasswordConfirm={setResetPasswordConfirm}
+        setShowPassword={setShowPassword}
+        showPassword={showPassword}
+        status={status}
+      />
     );
   }
 
   if (screen === "mode") {
     return (
-      <AppShell>
-        <AppHeader
-          title="Choose your workspace"
-          subtitle="Keep client self-measurements separate from tailor records."
-        />
-
-        <View style={styles.modeStack}>
-          <OfflineNotice message={offlineMessage} />
-          {status ? <Text style={styles.errorText}>{status}</Text> : null}
-
-          <Pressable
-            disabled={saving}
-            onPress={() => handleSelectMode("tailor")}
-            style={({ pressed }) => [styles.workspaceTile, styles.workspaceTilePrimary, pressed && styles.pressed]}
-          >
-            <Text style={styles.tileEyebrow}>For your shop</Text>
-            <Text style={styles.workspaceTitle}>Tailor mode</Text>
-            <Text style={styles.workspaceText}>Capture, review, save, and manage client measurements.</Text>
-          </Pressable>
-
-          <Pressable
-            disabled={saving}
-            onPress={() => handleSelectMode("client")}
-            style={({ pressed }) => [styles.workspaceTile, pressed && styles.pressed]}
-          >
-            <Text style={styles.tileEyebrow}>For personal use</Text>
-            <Text style={styles.workspaceTitle}>Client mode</Text>
-            <Text style={styles.workspaceText}>Take your own measurement and share only the result you approve.</Text>
-          </Pressable>
-        </View>
-      </AppShell>
+      <ModeScreen
+        isLightMode={isLightMode}
+        offlineMessage={offlineMessage}
+        onSelectMode={handleSelectMode}
+        saving={saving}
+        status={status}
+      />
     );
   }
 
   if (screen === "home") {
     return (
-      <AppShell active="home" onNavigate={handleNavigate}>
-        <AppHeader
-          title={profile?.mode === "client" ? "My measurements" : "Measurement studio"}
-          subtitle={profile?.mode === "client"
-            ? "Capture, review, and share your approved body measurements."
-            : "Capture clean measurements and keep customer records organized."}
+      <>
+        <HomeScreen
+          isLightMode={isLightMode}
+          measurementDrafts={measurementDrafts}
+          offlineMessage={offlineMessage}
+          onNavigate={handleNavigate}
+          onOpenDrafts={() => loadMeasurementDrafts({ openScreen: true })}
+          onOpenManual={handleStartManualInput}
+          onOpenMode={() => setScreen("mode")}
+          onOpenRecords={() => handleNavigate("records")}
+          onOpenReminders={handleOpenReminders}
+          onOpenStyles={() => loadStyleLibrary({ openScreen: true })}
+          onStartMeasurement={handleStartMeasurement}
+          profile={profile}
+          remindersLocked={!canUsePlanFeature(profile, "reminders")}
+          reminders={reminders}
+          status={status}
+          styleLibrary={styleLibrary}
         />
-
-        <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
-          <OfflineNotice message={offlineMessage} />
-          {status ? <Text style={styles.noticeText}>{status}</Text> : null}
-
-          <View style={styles.heroPanel}>
-            <Text style={styles.heroKicker}>{profile?.username || profile?.email}</Text>
-            <Text style={styles.heroTitle}>
-              {profile?.mode === "client" ? "Take a fresh measurement" : "Start a client measurement"}
-            </Text>
-            <Text style={styles.heroText}>
-              Use guided front and side photos, review each value, then save only what you approve.
-            </Text>
-            <Pressable onPress={handleStartMeasurement} style={({ pressed }) => [styles.heroButton, pressed && styles.pressed]}>
-              <Text style={styles.heroButtonText}>New measurement</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.actionGrid}>
-            {profile?.mode === "tailor" ? (
-              <>
-                <FeatureTile
-                  icon={Ruler}
-                  title="Manual"
-                  text="Save tape measurements."
-                  onPress={handleStartManualInput}
-                  tone="blue"
-                />
-                <FeatureTile
-                  icon={Bell}
-                  title="Reminders"
-                  text={`${reminders.length} active reminder${reminders.length === 1 ? "" : "s"}.`}
-                  onPress={() => loadReminders({ openScreen: true })}
-                  tone="rose"
-                />
-              </>
-            ) : null}
-            <FeatureTile
-              icon={FileText}
-              title="Drafts"
-              text={`${measurementDrafts.length} unfinished measurement${measurementDrafts.length === 1 ? "" : "s"}.`}
-              onPress={() => loadMeasurementDrafts({ openScreen: true })}
-              tone="violet"
-            />
-            <FeatureTile
-              icon={Palette}
-              title="Styles"
-              text={`${styleLibrary.length} saved idea${styleLibrary.length === 1 ? "" : "s"}.`}
-              onPress={() => loadStyleLibrary({ openScreen: true })}
-              tone="teal"
-            />
-            <FeatureTile
-              icon={ClipboardList}
-              title="Records"
-              text="Open saved measurements."
-              onPress={() => handleNavigate("records")}
-              tone="amber"
-            />
-            <FeatureTile
-              icon={User}
-              title="Mode"
-              text="Switch workspace."
-              onPress={() => setScreen("mode")}
-              tone="slate"
-            />
-          </View>
-
-        </ScrollView>
-      </AppShell>
+        {upgradePromptModal}
+      </>
     );
   }
 
@@ -6687,14 +5005,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#0B0A08",
-    paddingHorizontal: 18,
-  },
-  screenLight: {
-    backgroundColor: "#FFF8E7",
-  },
   authScreen: {
     flex: 1,
     backgroundColor: "#0B0A08",
@@ -6708,11 +5018,6 @@ const styles = StyleSheet.create({
   authBackgroundImage: {
     height: "100%",
     width: "100%",
-  },
-  shellBody: {
-    flex: 1,
-    marginHorizontal: 20,
-    paddingBottom: 88,
   },
   loadingScreen: {
     flex: 1,
@@ -6760,165 +5065,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     maxWidth: 300,
     textAlign: "center",
-  },
-  brandRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-  },
-  logoBadge: {
-    alignItems: "center",
-    backgroundColor: palette.amber,
-    borderColor: "#FFD37A",
-    borderRadius: 18,
-    borderWidth: 2,
-    height: 58,
-    justifyContent: "center",
-    width: 58,
-  },
-  logoBadgeCompact: {
-    borderRadius: 13,
-    height: 42,
-    width: 42,
-  },
-  logoBadgeText: {
-    color: palette.black,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  logoBadgeTextCompact: {
-    fontSize: 13,
-  },
-  brandName: {
-    color: "#ffffff",
-    fontSize: 34,
-    fontWeight: "900",
-  },
-  brandNameLight: {
-    color: "#15120b",
-  },
-  brandNameCompact: {
-    fontSize: 22,
-  },
-  brandAccent: {
-    color: palette.amber,
-  },
-  brandTagline: {
-    color: "#F8E6B8",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2,
-    marginTop: 2,
-    textTransform: "uppercase",
-  },
-  brandTaglineLight: {
-    color: "#6b4b05",
-  },
-  brandTaglineCompact: {
-    fontSize: 8,
-    letterSpacing: 1.4,
-  },
-  appHeader: {
-    paddingBottom: 18,
-    paddingTop: 8,
-  },
-  appHeaderTop: {
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  headerBackButton: {
-    alignItems: "center",
-    borderColor: "rgba(255,255,255,0.16)",
-    borderRadius: 13,
-    borderWidth: 1,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  headerBackButtonLight: {
-    borderColor: "rgba(21,18,11,0.16)",
-    backgroundColor: "#FFFDF6",
-  },
-  headerBackText: {
-    color: "#ffffff",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  headerBackTextLight: {
-    color: "#15120b",
-  },
-  pageTitle: {
-    color: "#ffffff",
-    fontSize: 30,
-    fontWeight: "900",
-    lineHeight: 36,
-    marginTop: 16,
-  },
-  pageTitleLight: {
-    color: "#15120b",
-  },
-  pageSubtitle: {
-    color: "#D8C9A8",
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 21,
-    marginTop: 8,
-  },
-  pageSubtitleLight: {
-    color: "#6f6759",
-  },
-  bottomNavWrap: {
-    bottom: 0,
-    left: 0,
-    paddingBottom: 10,
-    paddingHorizontal: 20,
-    position: "absolute",
-    right: 0,
-  },
-  bottomNav: {
-    backgroundColor: "#12100C",
-    borderColor: "rgba(255,159,0,0.22)",
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: "row",
-    padding: 6,
-  },
-  bottomNavLight: {
-    backgroundColor: "#FFFDF6",
-    borderColor: "#E8D8AD",
-  },
-  navItem: {
-    alignItems: "center",
-    borderRadius: 16,
-    flex: 1,
-    minHeight: 52,
-    justifyContent: "center",
-  },
-  navItemActive: {
-    backgroundColor: palette.amber,
-  },
-  navIcon: {
-    color: "#D8C9A8",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  navIconLight: {
-    color: "#6f6759",
-  },
-  navIconActive: {
-    color: palette.black,
-  },
-  navLabel: {
-    color: "#D8C9A8",
-    fontSize: 9,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-  navLabelLight: {
-    color: "#6f6759",
-  },
-  navLabelActive: {
-    color: palette.black,
   },
   selfSetupVisual: {
     backgroundColor: "#15120b",
@@ -7105,12 +5251,6 @@ const styles = StyleSheet.create({
   },
   cameraBackButtonPlaceholder: {
     width: 48,
-  },
-  cameraBackText: {
-    color: "#ffffff",
-    fontSize: 28,
-    fontWeight: "700",
-    lineHeight: 30,
   },
   capturePill: {
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -7328,11 +5468,6 @@ const styles = StyleSheet.create({
     height: 46,
     justifyContent: "center",
     width: 46,
-  },
-  smallBackText: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "900",
   },
   reviewTitle: {
     color: "#ffffff",
@@ -8419,92 +6554,8 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  actionTile: {
-    backgroundColor: palette.panel,
-    borderColor: "rgba(232,216,173,0.84)",
-    borderRadius: 18,
-    borderWidth: 1,
-    minHeight: 128,
-    padding: 14,
-    width: "48.5%",
-  },
-  actionIconBadge: {
-    alignItems: "center",
-    backgroundColor: "#15120b",
-    borderRadius: 12,
-    height: 36,
-    justifyContent: "center",
-    minWidth: 36,
-    paddingHorizontal: 8,
-    alignSelf: "flex-start",
-  },
-  actionIcon: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  actionTitle: {
-    color: "#15120b",
-    fontSize: 16,
-    fontWeight: "900",
-    marginTop: 12,
-  },
-  actionText: {
-    color: palette.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 18,
-    marginTop: 5,
-  },
   photoSourceStack: {
     gap: 12,
-  },
-  photoSourceTile: {
-    alignItems: "center",
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 14,
-    minHeight: 104,
-    padding: 16,
-  },
-  photoSourceTilePrimary: {
-    borderColor: "rgba(255,159,0,0.5)",
-  },
-  photoSourceIconBadge: {
-    alignItems: "center",
-    borderRadius: 18,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  photoSourceIcon: {
-    fontSize: 13,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  photoSourceBody: {
-    flex: 1,
-  },
-  photoSourceTitle: {
-    color: "#15120b",
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  photoSourceText: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 19,
-    marginTop: 5,
-  },
-  photoSourceArrow: {
-    color: palette.amberDark,
-    fontSize: 20,
-    fontWeight: "900",
   },
   noticeText: {
     backgroundColor: "#FFF3D2",
@@ -8512,18 +6563,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     color: "#5F3700",
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 19,
-    marginBottom: 12,
-    padding: 12,
-  },
-  offlineNotice: {
-    backgroundColor: "#201A10",
-    borderColor: "rgba(255,159,0,0.42)",
-    borderRadius: 14,
-    borderWidth: 1,
-    color: "#FFE5A3",
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 19,
@@ -8653,22 +6692,6 @@ const styles = StyleSheet.create({
     gap: 8,
     minWidth: 92,
   },
-  recordViewButton: {
-    alignItems: "center",
-    backgroundColor: palette.black,
-    borderRadius: 12,
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    minHeight: 40,
-    minWidth: 92,
-    paddingHorizontal: 14,
-  },
-  recordViewText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "900",
-  },
   recordMiniButton: {
     alignItems: "center",
     backgroundColor: palette.black,
@@ -8771,102 +6794,12 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 18,
   },
-  modalBackdrop: {
-    alignItems: "center",
-    backgroundColor: "rgba(8,8,7,0.64)",
-    flex: 1,
-    justifyContent: "center",
-    padding: 24,
-  },
-  confirmPanel: {
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
-    borderRadius: 24,
-    borderWidth: 1,
-    maxWidth: 420,
-    padding: 20,
-    width: "100%",
-  },
-  confirmTitle: {
-    color: "#15120b",
-    fontSize: 22,
-    fontWeight: "900",
-  },
   confirmText: {
     color: palette.muted,
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 21,
     marginTop: 8,
-  },
-  confirmActions: {
-    flexDirection: "row",
-    gap: 10,
-    justifyContent: "flex-end",
-    marginTop: 20,
-  },
-  cancelButton: {
-    alignItems: "center",
-    borderColor: palette.line,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 16,
-  },
-  cancelButtonText: {
-    color: "#15120b",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  primaryModalButton: {
-    alignItems: "center",
-    backgroundColor: palette.amber,
-    borderRadius: 12,
-    justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 18,
-  },
-  primaryModalButtonText: {
-    color: "#15120b",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  deleteButton: {
-    alignItems: "center",
-    backgroundColor: "#C83434",
-    borderRadius: 12,
-    justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 18,
-  },
-  deleteButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  dangerZoneBlock: {
-    borderColor: "#F3B8B8",
-  },
-  dangerZoneTitle: {
-    color: "#991B1B",
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  deleteAccountButton: {
-    alignItems: "center",
-    borderColor: "#C83434",
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: "center",
-    marginTop: 14,
-    minHeight: 48,
-    paddingHorizontal: 18,
-  },
-  deleteAccountButtonText: {
-    color: "#C83434",
-    fontSize: 14,
-    fontWeight: "900",
   },
   modalStatusText: {
     backgroundColor: "#fff7df",
@@ -8886,300 +6819,9 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 10,
   },
-  profileSummary: {
-    backgroundColor: palette.softGold,
-    borderColor: palette.amber,
-    borderRadius: 24,
-    borderWidth: 1,
-    marginBottom: 14,
-    padding: 18,
-  },
-  profileName: {
-    color: "#15120b",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  profileMeta: {
-    color: palette.muted,
-    fontSize: 13,
-    fontWeight: "800",
-    marginTop: 5,
-  },
-  profileMode: {
-    alignSelf: "flex-start",
-    backgroundColor: palette.black,
-    borderRadius: 999,
-    color: "#ffffff",
-    fontSize: 11,
-    fontWeight: "900",
-    marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textTransform: "uppercase",
-  },
-  themeToggleRow: {
-    alignItems: "center",
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    padding: 14,
-  },
-  themeToggleTitle: {
-    color: "#15120b",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  themeToggleText: {
-    color: palette.muted,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  appearanceButton: {
-    alignItems: "center",
-    backgroundColor: palette.black,
-    borderColor: "rgba(255,159,0,0.22)",
-    borderRadius: 999,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    minHeight: 38,
-    minWidth: 78,
-    paddingHorizontal: 14,
-  },
-  appearanceButtonCompact: {
-    minHeight: 34,
-    minWidth: 68,
-    paddingHorizontal: 12,
-  },
-  appearanceButtonLight: {
-    backgroundColor: palette.amber,
-    borderColor: palette.amber,
-  },
-  appearanceButtonText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  appearanceButtonTextLight: {
-    color: palette.black,
-  },
-  moreItem: {
-    alignItems: "center",
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-    minHeight: 78,
-    padding: 15,
-  },
-  moreItemTitle: {
-    color: "#15120b",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  moreItemText: {
-    color: palette.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 18,
-    marginTop: 4,
-    maxWidth: 260,
-  },
-  moreChevron: {
-    color: palette.amberDark,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  planScreenContent: {
-    paddingBottom: 36,
-  },
-  premiumPlanCard: {
-    backgroundColor: "#11100e",
-    borderColor: "rgba(255,159,0,0.3)",
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 22,
-  },
-  premiumPlanCardLight: {
-    backgroundColor: "#fff9ea",
-    borderColor: "rgba(196,111,0,0.42)",
-  },
-  premiumBadgeRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 26,
-  },
-  premiumBadge: {
-    backgroundColor: palette.amber,
-    borderRadius: 10,
-    color: "#15120b",
-    fontSize: 13,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
   resultGuideChipLight: {
     backgroundColor: "#fffaf0",
     borderColor: "rgba(196,111,0,0.18)",
-  },
-  premiumCurrentBadge: {
-    borderColor: "rgba(255,255,255,0.18)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: "#d7c9a2",
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    textTransform: "uppercase",
-  },
-  premiumCurrentBadgeLight: {
-    borderColor: "rgba(196,111,0,0.26)",
-    color: "#7a4b00",
-  },
-  premiumPrice: {
-    color: "#ffffff",
-    fontSize: 32,
-    fontWeight: "900",
-  },
-  premiumPriceLight: {
-    color: "#15120b",
-  },
-  premiumPriceNote: {
-    color: "#d7c9a2",
-    fontSize: 13,
-    fontWeight: "800",
-    marginTop: 6,
-  },
-  premiumPriceNoteLight: {
-    color: "#6f6759",
-  },
-  premiumIntro: {
-    color: "#b9afa1",
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 20,
-    marginTop: 28,
-  },
-  premiumIntroLight: {
-    color: "#5f584c",
-  },
-  billingToggleRow: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 16,
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 18,
-    padding: 6,
-  },
-  billingToggleRowLight: {
-    backgroundColor: "#efe5c8",
-  },
-  billingToggle: {
-    alignItems: "center",
-    borderRadius: 12,
-    flex: 1,
-    justifyContent: "center",
-    minHeight: 48,
-    paddingHorizontal: 8,
-  },
-  billingToggleActive: {
-    backgroundColor: palette.amber,
-  },
-  billingToggleLight: {
-    backgroundColor: "#fffdf6",
-  },
-  billingToggleText: {
-    color: "#d7c9a2",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  billingToggleTextLight: {
-    color: "#5f584c",
-  },
-  billingToggleTextActive: {
-    color: "#15120b",
-  },
-  billingToggleBadge: {
-    color: "#15120b",
-    fontSize: 10,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  premiumFeatureList: {
-    gap: 14,
-    marginTop: 28,
-  },
-  premiumFeatureRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 12,
-  },
-  premiumFeatureIcon: {
-    color: palette.amber,
-    fontSize: 18,
-    fontWeight: "900",
-    lineHeight: 22,
-    width: 18,
-  },
-  premiumFeatureText: {
-    color: "#f8efe2",
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 22,
-  },
-  premiumFeatureTextLight: {
-    color: "#15120b",
-  },
-  planUpgradeButton: {
-    alignItems: "center",
-    backgroundColor: palette.amber,
-    borderRadius: 16,
-    justifyContent: "center",
-    marginTop: 30,
-    minHeight: 56,
-    paddingHorizontal: 16,
-  },
-  planUpgradeButtonText: {
-    color: "#15120b",
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  premiumStatusText: {
-    color: "#d7c9a2",
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 19,
-    marginTop: 14,
-    textAlign: "center",
-  },
-  premiumStatusTextLight: {
-    color: "#7a4b00",
-  },
-  planFooterNote: {
-    color: "#a9a091",
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 19,
-    marginTop: 14,
-    textAlign: "center",
-  },
-  planFooterNoteLight: {
-    color: "#5f584c",
   },
   infoPanel: {
     backgroundColor: palette.panel,
@@ -9187,50 +6829,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     padding: 18,
-  },
-  inlineSettingsBlock: {
-    borderColor: "rgba(232,216,173,0.8)",
-    borderTopWidth: 1,
-    marginTop: 16,
-    paddingTop: 16,
-  },
-  infoLabel: {
-    color: palette.amberDark,
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    marginTop: 14,
-    textTransform: "uppercase",
-  },
-  infoValue: {
-    color: "#15120b",
-    fontSize: 17,
-    fontWeight: "900",
-    marginTop: 5,
-  },
-  helpItem: {
-    alignItems: "flex-start",
-    backgroundColor: palette.panel,
-    borderColor: palette.line,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-    padding: 14,
-  },
-  helpBullet: {
-    color: palette.amberDark,
-    fontSize: 18,
-    fontWeight: "900",
-    lineHeight: 22,
-  },
-  helpText: {
-    color: "#15120b",
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 21,
   },
   policyTitle: {
     color: "#15120b",
@@ -9244,12 +6842,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 22,
     marginTop: 8,
-  },
-  aboutTitle: {
-    color: "#15120b",
-    fontSize: 21,
-    fontWeight: "900",
-    lineHeight: 28,
   },
   logoBlock: {
     alignItems: "center",
@@ -9507,15 +7099,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: 6,
-  },
-  logoutButton: {
-    alignItems: "center",
-    marginTop: 18,
-  },
-  logoutText: {
-    color: "#991b1b",
-    fontSize: 14,
-    fontWeight: "900",
   },
   pressed: {
     opacity: 0.78,
